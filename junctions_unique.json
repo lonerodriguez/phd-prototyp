@@ -1,40 +1,157 @@
 [
   {
-    "elements": [
+    "element_ids": [
       56,
       142
     ],
     "junction_type": "Lv1-2",
-    "source": {
-      "separating_id": 142,
-      "junction_box": 6
-    },
+    "junction_scope": "JB6",
+    "elements": [
+      {
+        "ifc_id": 142,
+        "guid": "1IoXKV3UD9EAy5OOpLu4JJ",
+        "type": "IfcWallStandardCase",
+        "name": "WandInstanz",
+        "dir": "n",
+        "dist": 0.0
+      },
+      {
+        "ifc_id": 56,
+        "guid": "2m9OIsdJX4kvGznFAGvJDb",
+        "type": "IfcSlab",
+        "name": "Floor:DeckenInstanz:316140",
+        "dir": "o",
+        "dist": 0.0
+      }
+    ],
     "debug": {
-      "se_type": "IfcWallStandardCase",
-      "flanking_count": 1,
-      "fe_type": "IfcSlab",
-      "fe_dir": "o",
-      "fe_dd": "n",
-      "cz": "border"
+      "k": 2,
+      "local_order": {
+        "1": 142,
+        "2": 56
+      },
+      "dirs": {
+        "142": "n",
+        "56": "o"
+      },
+      "cz_pairs": {
+        "142": {
+          "56": "short"
+        },
+        "56": {
+          "142": "short"
+        }
+      },
+      "separating_id": 142
     }
   },
   {
-    "elements": [
+    "element_ids": [
       56,
       190
     ],
     "junction_type": "Lv1-2",
-    "source": {
-      "separating_id": 190,
-      "junction_box": 5
-    },
+    "junction_scope": "JB5",
+    "elements": [
+      {
+        "ifc_id": 190,
+        "guid": "0OyKBZP417revh_YJGMIOI",
+        "type": "IfcWallStandardCase",
+        "name": "WandInstanz",
+        "dir": "n",
+        "dist": 0.0
+      },
+      {
+        "ifc_id": 56,
+        "guid": "2m9OIsdJX4kvGznFAGvJDb",
+        "type": "IfcSlab",
+        "name": "Floor:DeckenInstanz:316140",
+        "dir": "o",
+        "dist": 0.0
+      }
+    ],
     "debug": {
-      "se_type": "IfcWallStandardCase",
-      "flanking_count": 1,
-      "fe_type": "IfcSlab",
-      "fe_dir": "o",
-      "fe_dd": "n",
-      "cz": "border"
+      "k": 2,
+      "local_order": {
+        "1": 190,
+        "2": 56
+      },
+      "dirs": {
+        "190": "n",
+        "56": "o"
+      },
+      "cz_pairs": {
+        "190": {
+          "56": "short"
+        },
+        "56": {
+          "190": "short"
+        }
+      },
+      "separating_id": 190
+    }
+  },
+  {
+    "element_ids": [
+      56,
+      142,
+      190
+    ],
+    "junction_type": "Tv2-1-4",
+    "junction_scope": "COMBINED",
+    "elements": [
+      {
+        "ifc_id": 56,
+        "guid": "2m9OIsdJX4kvGznFAGvJDb",
+        "type": "IfcSlab",
+        "name": "Floor:DeckenInstanz:316140",
+        "dir": "o",
+        "dist": 0.0
+      },
+      {
+        "ifc_id": 190,
+        "guid": "0OyKBZP417revh_YJGMIOI",
+        "type": "IfcWallStandardCase",
+        "name": "WandInstanz",
+        "dir": "n",
+        "dist": 0.0
+      },
+      {
+        "ifc_id": 142,
+        "guid": "1IoXKV3UD9EAy5OOpLu4JJ",
+        "type": "IfcWallStandardCase",
+        "name": "WandInstanz",
+        "dir": "n",
+        "dist": 0.0
+      }
+    ],
+    "debug": {
+      "k": 3,
+      "local_order": {
+        "1": 142,
+        "2": 190,
+        "3": 56
+      },
+      "dirs": {
+        "56": "o",
+        "190": "n",
+        "142": "n"
+      },
+      "cz_pairs": {
+        "56": {
+          "190": "short",
+          "142": "short"
+        },
+        "190": {
+          "56": "short",
+          "142": "0"
+        },
+        "142": {
+          "56": "short",
+          "190": "0"
+        }
+      },
+      "separating_id": 56
     }
   }
 ]
