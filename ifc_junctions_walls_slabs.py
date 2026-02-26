@@ -2,44 +2,37 @@
 # -*- coding: utf-8 -*-
 
 """
-IFC Junction Extraction (Walls + Slabs) – paper-inspired pipeline
+IFC Junction Extraction (Walls + Slabs/Ceilings) with:
+- Robust axis handling for walls (XY only, not Z)
+- Junction boxes for walls (6) and slabs (6)
+- Rule mapping:
+  * Wall–Wall perpendicular at end => Lh1-2
+  * Wall–Slab (either direction)    => Lv1-2
+- Deduplication: outputs UNIQUE junctions (one record per element-pair + type)
 
-Reads an IFC, considers ONLY:
-- Walls: IfcWall, IfcWallStandardCase
-- Slabs/Ceilings: IfcSlab (and optionally IfcRoof)
+Usage:
+  # IFC in same folder, named model.ifc
+  python ifc_junctions.py
 
-Workflow:
-1) Read IFC + geometry (AABB)
-2) Filter flanking candidates using:
-   - IfcRelConnectsElements
-   - IfcRelSpaceBoundary (best-effort)
-   - Storey neighborhood (same + above/below) (best-effort)
-   - Distance threshold (<= 0.30 m)
-3) Build Junction Boxes (JB) around each separating element:
-   - Wall: 6 boxes (4 side boxes split along length + below + above)
-   - Slab: 6 boxes (4 perimeter bands + below + above)
-4) Assign flanking elements to the best matching JB (intersection + closest center)
-5) Derive junction type with a small rule set:
-   - Robust: Wall+Wall, perpendicular (dir='m') and cz='short' => Lh1-2
-   - Plus the excerpted 2-element rules used earlier
-   - Everything else => UNKNOWN_* placeholders (extend here with full 15-type table)
+  # or explicit
+  python ifc_junctions.py path/to/model.ifc
 
-Usage (IFC in same folder):
-    python ifc_junctions_walls_slabs.py model.ifc
-Optional:
-    python ifc_junctions_walls_slabs.py model.ifc out.json
+Output:
+  junctions_unique.json (default)  -> unique junction list
+  junctions_raw.json (debug)       -> per-(separating,junction_box) records
 
 Dependencies:
-    pip install ifcopenshell numpy
+  pip install ifcopenshell numpy
 """
 
 from __future__ import annotations
 
 import json
 import math
+import os
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set, Any
 
 import numpy as np
 import ifcopenshell
@@ -56,7 +49,7 @@ SPLIT = 0.50         # depth/width for wall side boxes [m]
 BORDER_W = 0.30      # border zone thickness [m]
 SHORT_W = 0.30       # "short" zone near wall ends [m]
 
-MAX_ELEMS_PER_JB = 4  # separating + up to 3 flanking (paper mentions max 4 elements)
+MAX_ELEMS_PER_JB = 4  # separating + up to 3 flanking
 
 
 Vec3 = Tuple[float, float, float]
@@ -120,7 +113,7 @@ class ElementInfo:
 class JunctionBox:
     jb_id: int
     bbox: BBox
-    elements: List[ElementInfo]  # includes separating element + flanking assigned
+    elements: List[ElementInfo]  # includes separating + flanking assigned
 
 
 # -----------------------------
@@ -258,7 +251,7 @@ def neighbor_storeys(model, storey_id: int) -> Tuple[Optional[int], Optional[int
 
 
 # -----------------------------
-# Axes + directions + zones (FIXED)
+# Axes + directions + zones
 # -----------------------------
 
 def wall_axes_from_bbox(b: BBox) -> Tuple[int, int, int]:
@@ -278,10 +271,10 @@ def wall_axes_from_bbox(b: BBox) -> Tuple[int, int, int]:
 
 def slab_axes_from_bbox(b: BBox) -> Tuple[int, int, int]:
     """
-    Slab-specific axes (plan):
+    Slab axes (plan):
     - long axis: larger of X/Y
     - mid axis: smaller of X/Y
-    - vertical: Z (=2)
+    - vertical axis: Z (=2)
     """
     sx, sy, _ = b.size()
     if sx >= sy:
@@ -292,7 +285,7 @@ def slab_axes_from_bbox(b: BBox) -> Tuple[int, int, int]:
 
 
 def element_dir_label(se: ElementInfo, fe: ElementInfo) -> str:
-    # slabs/ceilings treated as vertical category when flanking
+    # slab as flanking -> vertical category
     if is_slab(fe.ifc_type):
         return "o"
 
@@ -302,7 +295,7 @@ def element_dir_label(se: ElementInfo, fe: ElementInfo) -> str:
         fe_len, _, _ = wall_axes_from_bbox(fe.bbox)
         return "n" if fe_len == se_len else "m"
 
-    # slab-wall: compare wall length axis to slab long axis in plan
+    # slab-wall: compare wall length axis to slab long axis (plan)
     if is_slab(se.ifc_type) and is_wall(fe.ifc_type):
         se_long, _, _ = slab_axes_from_bbox(se.bbox)
         fe_len, _, _ = wall_axes_from_bbox(fe.bbox)
@@ -335,12 +328,8 @@ def distance_direction_label(se: ElementInfo, fe: ElementInfo) -> str:
 def wall_connection_zone(se_wall_bbox: BBox, fe_bbox: BBox) -> str:
     """
     Zone on wall face (heuristic): short / border / middle.
-    - short: near wall ends along length axis
-    - border: near perimeter (ends or top/bottom)
-    - middle: otherwise
     """
     len_ax, _, h_ax = wall_axes_from_bbox(se_wall_bbox)
-
     c = fe_bbox.center()
     proj_len = c[len_ax]
     proj_h = c[h_ax]
@@ -488,51 +477,55 @@ def build_junction_boxes_for_slab(se: ElementInfo) -> List[JunctionBox]:
 
 
 # -----------------------------
-# Rule engine (minimal but fixes your L case)
+# Rule engine (minimal set for your cases)
 # -----------------------------
 
-def derive_junction_type(se: ElementInfo, flanking: List[ElementInfo]) -> Tuple[str, Dict]:
+def derive_junction_type(se: ElementInfo, flanking: List[ElementInfo]) -> Tuple[str, Dict[str, Any]]:
     """
     Returns (junction_type, debug_dict).
     Implemented:
-    - Robust L-junction: Wall+Wall perpendicular + cz=short => Lh1-2
-    - Earlier excerpted 2-element wall rules retained
-    Extend here for full paper rule table (3/4 elements, slabs etc.).
+    - Wall–Slab => Lv1-2
+    - Wall–Wall perpendicular at wall end => Lh1-2
+    Everything else:
+    - NONE / UNKNOWN_2E / UNMAPPED_COMPLEX
     """
-    dbg = {"se_type": se.ifc_type, "flanking_count": len(flanking)}
+    dbg: Dict[str, Any] = {"se_type": se.ifc_type, "flanking_count": len(flanking)}
 
     if len(flanking) == 0:
         return "NONE", dbg
 
     if len(flanking) == 1:
         fe = flanking[0]
-        dbg.update({"fe_dir": fe.dir_label, "fe_dd": fe.dd_label})
+        dbg.update({"fe_type": fe.ifc_type, "fe_dir": fe.dir_label, "fe_dd": fe.dd_label})
 
-        if is_wall(se.ifc_type):
-            cz = wall_connection_zone(se.bbox, fe.bbox)
-        else:
-            cz = slab_connection_zone(se.bbox, fe.bbox)
-        dbg["cz"] = cz
+        # --- IMPORTANT: map wall–slab to Lv1-2 (either direction) ---
+        if (is_wall(se.ifc_type) and is_slab(fe.ifc_type)) or (is_slab(se.ifc_type) and is_wall(fe.ifc_type)):
+            # store a useful zone too (optional)
+            if is_wall(se.ifc_type):
+                dbg["cz"] = wall_connection_zone(se.bbox, fe.bbox)
+            else:
+                dbg["cz"] = slab_connection_zone(se.bbox, fe.bbox)
+            return "Lv1-2", dbg
 
-        # --- FIX: your expected case ---
-        # Two walls forming an L: FE perpendicular to SE (dir='m') and connection at end zone => Lh1-2
+        # wall-wall rules
         if is_wall(se.ifc_type) and is_wall(fe.ifc_type):
+            cz = wall_connection_zone(se.bbox, fe.bbox)
+            dbg["cz"] = cz
+
+            # robust L-junction (two walls, perpendicular, at end)
             if fe.dir_label == "m" and cz == "short":
                 return "Lh1-2", dbg
 
-            # Keep stricter/excerpted rules as fallback
+            # keep a stricter variant (optional)
             if fe.dir_label == "m" and fe.dd_label == "n" and cz == "short":
                 return "Lh1-2", dbg
-            if fe.dir_label == "m" and fe.dd_label == "m" and cz == "border":
-                return "Lh1-2", dbg
-            if fe.dir_label == "m" and fe.dd_label == "m" and cz == "middle":
-                return "Th1-24", dbg
 
-        # Generic placeholders for other 2-element combos
-        if is_slab(se.ifc_type) and is_wall(fe.ifc_type):
-            return "SLAB_WITH_WALL", dbg
-        if is_wall(se.ifc_type) and is_slab(fe.ifc_type):
-            return "WALL_WITH_SLAB", dbg
+            return "UNKNOWN_2E", dbg
+
+        # slab-slab not mapped here
+        if is_slab(se.ifc_type) and is_slab(fe.ifc_type):
+            dbg["cz"] = slab_connection_zone(se.bbox, fe.bbox)
+            return "UNKNOWN_2E", dbg
 
         return "UNKNOWN_2E", dbg
 
@@ -542,10 +535,64 @@ def derive_junction_type(se: ElementInfo, flanking: List[ElementInfo]) -> Tuple[
 
 
 # -----------------------------
+# Deduplication to UNIQUE junctions
+# -----------------------------
+
+def _type_score(t: str) -> int:
+    if t == "NONE":
+        return 0
+    if t.startswith("UNKNOWN") or t.startswith("UNMAPPED"):
+        return 1
+    return 2  # real type (Lv*, Lh*, Th*, Tv*, X*)
+
+
+def dedupe_unique_junctions(raw_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Collapse per-(separating,JB) rows into unique junctions between element pairs.
+    Produces one record per unordered element-pair, preferring the best (real) junction_type.
+    """
+    best: Dict[frozenset, Dict[str, Any]] = {}
+
+    for row in raw_rows:
+        se = row["separating"]
+        se_id = se["ifc_id"]
+        jtype = row["junction_type"]
+
+        for fe in row.get("flanking", []):
+            fe_id = fe["ifc_id"]
+            pair = frozenset({se_id, fe_id})
+
+            candidate = {
+                "elements": sorted([se_id, fe_id]),
+                "junction_type": jtype,
+                "source": {
+                    "separating_id": se_id,
+                    "junction_box": row["junction_box"],
+                },
+                "debug": row.get("debug", {}),
+            }
+
+            if pair not in best:
+                best[pair] = candidate
+            else:
+                if _type_score(candidate["junction_type"]) > _type_score(best[pair]["junction_type"]):
+                    best[pair] = candidate
+
+    # remove any pairs that never got a non-NONE (shouldn't appear anyway)
+    out = []
+    for _, v in best.items():
+        if v["junction_type"] != "NONE":
+            out.append(v)
+    return out
+
+
+# -----------------------------
 # Main pipeline
 # -----------------------------
 
-def analyze_ifc(ifc_path: str, out_json: str = "junctions.json") -> List[Dict]:
+def analyze_ifc(ifc_path: str,
+                out_unique_json: str = "junctions_unique.json",
+                out_raw_json: str = "junctions_raw.json") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     model = ifcopenshell.open(ifc_path)
     settings = create_settings()
 
@@ -572,12 +619,12 @@ def analyze_ifc(ifc_path: str, out_json: str = "junctions.json") -> List[Dict]:
     for eid in separating_ids:
         elem_storey[eid] = storey_of_element(model, model.by_id(eid))
 
-    out_rows: List[Dict] = []
+    raw_rows: List[Dict[str, Any]] = []
 
     for se_id in separating_ids:
         se = infos[se_id]
 
-        # candidate IDs from:
+        # candidate IDs from relations + space boundaries + storey neighborhood
         rel_ids = connected_elements_via_relconnects(model, se_id)
         sb_ids = adjacent_via_spaceboundaries(model, se_id)
 
@@ -644,12 +691,12 @@ def analyze_ifc(ifc_path: str, out_json: str = "junctions.json") -> List[Dict]:
             if best_jb is not None and len(best_jb.elements) < MAX_ELEMS_PER_JB:
                 best_jb.elements.append(fe)
 
-        # derive junction type per JB
+        # derive junction type per JB and store raw rows
         for jb in jbs:
             flanking = [e for e in jb.elements if e.ifc_id != se.ifc_id]
             jtype, dbg = derive_junction_type(se, flanking)
 
-            out_rows.append({
+            raw_rows.append({
                 "separating": {
                     "ifc_id": se.ifc_id,
                     "guid": se.guid,
@@ -671,10 +718,16 @@ def analyze_ifc(ifc_path: str, out_json: str = "junctions.json") -> List[Dict]:
                 "debug": dbg
             })
 
-    with open(out_json, "w", encoding="utf-8") as f:
-        json.dump(out_rows, f, ensure_ascii=False, indent=2)
+    unique = dedupe_unique_junctions(raw_rows)
 
-    return out_rows
+    # write both
+    with open(out_raw_json, "w", encoding="utf-8") as f:
+        json.dump(raw_rows, f, ensure_ascii=False, indent=2)
+
+    with open(out_unique_json, "w", encoding="utf-8") as f:
+        json.dump(unique, f, ensure_ascii=False, indent=2)
+
+    return unique, raw_rows
 
 
 def main():
@@ -684,9 +737,18 @@ def main():
     else:
         ifc_path = sys.argv[1]
 
-    out_json = sys.argv[2] if len(sys.argv) > 2 else "junctions.json"
-    rows = analyze_ifc(ifc_path, out_json=out_json)
-    print(f"Done. Wrote {len(rows)} junction records to {out_json}")
+    if not os.path.exists(ifc_path):
+        print(f"ERROR: IFC file not found: {ifc_path}")
+        print("Usage: python ifc_junctions.py [path/to/model.ifc]")
+        sys.exit(1)
+
+    unique, raw_rows = analyze_ifc(ifc_path,
+                                   out_unique_json="junctions_unique.json",
+                                   out_raw_json="junctions_raw.json")
+
+    print(f"Done.")
+    print(f"- Raw records:     {len(raw_rows)} -> junctions_raw.json")
+    print(f"- Unique junctions:{len(unique)} -> junctions_unique.json")
 
 
 if __name__ == "__main__":

@@ -165,13 +165,190 @@
         "dist": 0.0
       }
     ],
-    "junction_type": "WALL_WITH_SLAB",
+    "junction_type": "Lv1-2",
     "debug": {
       "se_type": "IfcWallStandardCase",
       "flanking_count": 1,
+      "fe_type": "IfcSlab",
       "fe_dir": "o",
       "fe_dd": "n",
       "cz": "border"
+    }
+  },
+  {
+    "separating": {
+      "ifc_id": 190,
+      "guid": "0OyKBZP417revh_YJGMIOI",
+      "type": "IfcWallStandardCase",
+      "name": "WandInstanz",
+      "bbox": {
+        "mn": [
+          -1.0120576854525938,
+          0.6315960709682165,
+          1.4019000000000001
+        ],
+        "mx": [
+          -0.012057685452593581,
+          1.1830960709682163,
+          2.4019000000000004
+        ]
+      }
+    },
+    "junction_box": 1,
+    "flanking": [],
+    "junction_type": "NONE",
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 0
+    }
+  },
+  {
+    "separating": {
+      "ifc_id": 190,
+      "guid": "0OyKBZP417revh_YJGMIOI",
+      "type": "IfcWallStandardCase",
+      "name": "WandInstanz",
+      "bbox": {
+        "mn": [
+          -1.0120576854525938,
+          0.6315960709682165,
+          1.4019000000000001
+        ],
+        "mx": [
+          -0.012057685452593581,
+          1.1830960709682163,
+          2.4019000000000004
+        ]
+      }
+    },
+    "junction_box": 2,
+    "flanking": [],
+    "junction_type": "NONE",
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 0
+    }
+  },
+  {
+    "separating": {
+      "ifc_id": 190,
+      "guid": "0OyKBZP417revh_YJGMIOI",
+      "type": "IfcWallStandardCase",
+      "name": "WandInstanz",
+      "bbox": {
+        "mn": [
+          -1.0120576854525938,
+          0.6315960709682165,
+          1.4019000000000001
+        ],
+        "mx": [
+          -0.012057685452593581,
+          1.1830960709682163,
+          2.4019000000000004
+        ]
+      }
+    },
+    "junction_box": 3,
+    "flanking": [],
+    "junction_type": "NONE",
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 0
+    }
+  },
+  {
+    "separating": {
+      "ifc_id": 190,
+      "guid": "0OyKBZP417revh_YJGMIOI",
+      "type": "IfcWallStandardCase",
+      "name": "WandInstanz",
+      "bbox": {
+        "mn": [
+          -1.0120576854525938,
+          0.6315960709682165,
+          1.4019000000000001
+        ],
+        "mx": [
+          -0.012057685452593581,
+          1.1830960709682163,
+          2.4019000000000004
+        ]
+      }
+    },
+    "junction_box": 4,
+    "flanking": [],
+    "junction_type": "NONE",
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 0
+    }
+  },
+  {
+    "separating": {
+      "ifc_id": 190,
+      "guid": "0OyKBZP417revh_YJGMIOI",
+      "type": "IfcWallStandardCase",
+      "name": "WandInstanz",
+      "bbox": {
+        "mn": [
+          -1.0120576854525938,
+          0.6315960709682165,
+          1.4019000000000001
+        ],
+        "mx": [
+          -0.012057685452593581,
+          1.1830960709682163,
+          2.4019000000000004
+        ]
+      }
+    },
+    "junction_box": 5,
+    "flanking": [
+      {
+        "ifc_id": 56,
+        "guid": "2m9OIsdJX4kvGznFAGvJDb",
+        "type": "IfcSlab",
+        "name": "Floor:DeckenInstanz:316140",
+        "dir": "o",
+        "dd": "n",
+        "dist": 0.0
+      }
+    ],
+    "junction_type": "Lv1-2",
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 1,
+      "fe_type": "IfcSlab",
+      "fe_dir": "o",
+      "fe_dd": "n",
+      "cz": "border"
+    }
+  },
+  {
+    "separating": {
+      "ifc_id": 190,
+      "guid": "0OyKBZP417revh_YJGMIOI",
+      "type": "IfcWallStandardCase",
+      "name": "WandInstanz",
+      "bbox": {
+        "mn": [
+          -1.0120576854525938,
+          0.6315960709682165,
+          1.4019000000000001
+        ],
+        "mx": [
+          -0.012057685452593581,
+          1.1830960709682163,
+          2.4019000000000004
+        ]
+      }
+    },
+    "junction_box": 6,
+    "flanking": [],
+    "junction_type": "NONE",
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 0
     }
   },
   {
@@ -313,10 +490,11 @@
         "dist": 0.0
       }
     ],
-    "junction_type": "SLAB_WITH_WALL",
+    "junction_type": "Lv1-2",
     "debug": {
       "se_type": "IfcSlab",
       "flanking_count": 1,
+      "fe_type": "IfcWallStandardCase",
       "fe_dir": "n",
       "fe_dd": "n",
       "cz": "border"
@@ -342,11 +520,25 @@
       }
     },
     "junction_box": 6,
-    "flanking": [],
-    "junction_type": "NONE",
+    "flanking": [
+      {
+        "ifc_id": 190,
+        "guid": "0OyKBZP417revh_YJGMIOI",
+        "type": "IfcWallStandardCase",
+        "name": "WandInstanz",
+        "dir": "n",
+        "dd": "n",
+        "dist": 0.0
+      }
+    ],
+    "junction_type": "Lv1-2",
     "debug": {
       "se_type": "IfcSlab",
-      "flanking_count": 0
+      "flanking_count": 1,
+      "fe_type": "IfcWallStandardCase",
+      "fe_dir": "n",
+      "fe_dd": "n",
+      "cz": "border"
     }
   }
 ]

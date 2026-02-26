@@ -1,0 +1,40 @@
+[
+  {
+    "elements": [
+      56,
+      142
+    ],
+    "junction_type": "Lv1-2",
+    "source": {
+      "separating_id": 142,
+      "junction_box": 6
+    },
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 1,
+      "fe_type": "IfcSlab",
+      "fe_dir": "o",
+      "fe_dd": "n",
+      "cz": "border"
+    }
+  },
+  {
+    "elements": [
+      56,
+      190
+    ],
+    "junction_type": "Lv1-2",
+    "source": {
+      "separating_id": 190,
+      "junction_box": 5
+    },
+    "debug": {
+      "se_type": "IfcWallStandardCase",
+      "flanking_count": 1,
+      "fe_type": "IfcSlab",
+      "fe_dir": "o",
+      "fe_dd": "n",
+      "cz": "border"
+    }
+  }
+]
