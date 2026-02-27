@@ -2,20 +2,23 @@
 # -*- coding: utf-8 -*-
 
 """
-IFC Junction Extraction (Walls + Slabs) – extended for 3-element T junctions (Tv2-1-4 / Th2-1-4)
-Key upgrades:
-- Build BOTH: per-JB junctions AND combined junctions per separating element
-- Pairwise connection zones CZ(e -> o) instead of single CZ per element
-- Neutral CZ = "0" for flanker-flanker pairs when separated by the separating element
-- Rule engine matches on directions + pairwise CZ constraints
+Paper-konforme Stoßstellenanalyse (Hellwig Diss-Auszug) – OPTIMIERT
+
+Änderungen (aktueller Stand):
+- DD (distance direction) robust über nächstgelegene SE-Fläche am Kontaktpunkt
+- Kandidaten-/CZ-Filter gegen "nur Kante / nur Punkt"-Kontakte (Mindest-Überlappung)
+- FE->JB Zuordnung per Algorithmus 1–3
+- Connection Zones short/border/middle nach BBox-Flächen-Logik + border strip 0.5m
+- Junction type matching permutation-invariant
+- Ausgabe: nur maximal (größte) Junctions (Superset wins)
 
 Usage:
-  python ifc_junctions_paircz.py            # uses ./model.ifc
-  python ifc_junctions_paircz.py my.ifc
+  python ifc_junctions_paper_optimized.py            # reads ./model.ifc
+  python ifc_junctions_paper_optimized.py my.ifc
 
 Outputs:
-  junctions_raw.json       (debug: per-JB + combined)
-  junctions_unique.json    (deduped junctions)
+  junctions_unique.json
+  junctions_debug.json
 """
 
 from __future__ import annotations
@@ -25,67 +28,76 @@ import math
 import os
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Set, Any, FrozenSet
+from itertools import combinations, permutations
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-import numpy as np
 import ifcopenshell
 import ifcopenshell.geom
-
+import numpy as np
 
 # -----------------------------
-# Config
+# Paper / heuristic constants
 # -----------------------------
+OFF_03 = 0.30        # +/-0.3 m
+OFF_05 = 0.50        # +/-0.5 m
+CLOSE_TO = 0.30      # "close to" threshold
 
-DIST_THRESH = 0.30     # close-to threshold for candidate filtering
-PAD = 0.30
-SPLIT = 0.50
+# Reject edge-only / point contacts:
+MIN_OVERLAP_LEN = 0.05   # 5 cm
+MIN_OVERLAP_AREA = 0.01  # 100 cm²
 
-BORDER_W = 0.50        # per your text/figures (0.5 m strips)
-SHORT_W = 0.30
-
-MAX_ELEMS_PER_JB = 4   # separating + up to 3 flanking
-MAX_ELEMS_COMBINED = 4 # combined junction per separating element
-
+EPS_FACE = 1e-6
 
 Vec3 = Tuple[float, float, float]
+DD = str  # "Xplus","Xminus","Yplus","Yminus","Zplus","Zminus"
 
 
 # -----------------------------
-# Data structures
+# Geometry primitives
 # -----------------------------
-
-@dataclass
+@dataclass(frozen=True)
 class BBox:
     mn: Vec3
     mx: Vec3
-
-    def intersects(self, other: "BBox") -> bool:
-        return (
-            self.mn[0] <= other.mx[0] and self.mx[0] >= other.mn[0] and
-            self.mn[1] <= other.mx[1] and self.mx[1] >= other.mn[1] and
-            self.mn[2] <= other.mx[2] and self.mx[2] >= other.mn[2]
-        )
-
-    def intersection(self, other: "BBox") -> Optional["BBox"]:
-        mn = (max(self.mn[0], other.mn[0]), max(self.mn[1], other.mn[1]), max(self.mn[2], other.mn[2]))
-        mx = (min(self.mx[0], other.mx[0]), min(self.mx[1], other.mx[1]), min(self.mx[2], other.mx[2]))
-        if mn[0] <= mx[0] and mn[1] <= mx[1] and mn[2] <= mx[2]:
-            return BBox(mn, mx)
-        return None
-
-    def center(self) -> Vec3:
-        return ((self.mn[0] + self.mx[0]) / 2.0, (self.mn[1] + self.mx[1]) / 2.0, (self.mn[2] + self.mx[2]) / 2.0)
-
-    def size(self) -> Vec3:
-        return (self.mx[0] - self.mn[0], self.mx[1] - self.mn[1], self.mx[2] - self.mn[2])
 
     def distance_to(self, other: "BBox") -> float:
         dx = max(0.0, other.mn[0] - self.mx[0], self.mn[0] - other.mx[0])
         dy = max(0.0, other.mn[1] - self.mx[1], self.mn[1] - other.mx[1])
         dz = max(0.0, other.mn[2] - self.mx[2], self.mn[2] - other.mx[2])
-        return math.sqrt(dx*dx + dy*dy + dz*dz)
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    def clamp_point(self, p: Vec3) -> Vec3:
+        return (
+            min(max(p[0], self.mn[0]), self.mx[0]),
+            min(max(p[1], self.mn[1]), self.mx[1]),
+            min(max(p[2], self.mn[2]), self.mx[2]),
+        )
+
+    def center(self) -> Vec3:
+        return (
+            (self.mn[0] + self.mx[0]) * 0.5,
+            (self.mn[1] + self.mx[1]) * 0.5,
+            (self.mn[2] + self.mx[2]) * 0.5,
+        )
+
+    def size(self) -> Vec3:
+        return (self.mx[0] - self.mn[0], self.mx[1] - self.mn[1], self.mx[2] - self.mn[2])
 
 
+def overlap_1d(a0: float, a1: float, b0: float, b1: float) -> float:
+    return max(0.0, min(a1, b1) - max(a0, b0))
+
+
+def overlap_lengths(a: BBox, b: BBox) -> Tuple[float, float, float]:
+    ox = overlap_1d(a.mn[0], a.mx[0], b.mn[0], b.mx[0])
+    oy = overlap_1d(a.mn[1], a.mx[1], b.mn[1], b.mx[1])
+    oz = overlap_1d(a.mn[2], a.mx[2], b.mn[2], b.mx[2])
+    return ox, oy, oz
+
+
+# -----------------------------
+# IFC element data
+# -----------------------------
 @dataclass
 class ElementInfo:
     ifc_id: int
@@ -93,22 +105,22 @@ class ElementInfo:
     ifc_type: str
     name: str
     bbox: BBox
-    dir_label: str = ""   # n/m/o within a junction context
-    dist: float = 0.0     # for debug
+    axis: str               # 'x','y','z' paper abstraction
+    dir_label: str = ""     # 'n','m','o' relative inside a junction
 
 
 @dataclass
-class JunctionBox:
+class JB:
     jb_id: int
     bbox: BBox
-    elements: List[ElementInfo]
+    se_id: int
+    fe_ids: List[int]
 
 
 # -----------------------------
 # IFC helpers
 # -----------------------------
-
-def create_settings():
+def create_geom_settings():
     s = ifcopenshell.geom.settings()
     s.set(s.USE_WORLD_COORDS, True)
     return s
@@ -130,8 +142,8 @@ def is_wall(t: str) -> bool:
 
 
 def is_slab(t: str) -> bool:
-    t = t.lower()
-    return t.startswith("ifcslab") or t.startswith("ifcroof")
+    tl = t.lower()
+    return tl.startswith("ifcslab") or tl.startswith("ifcroof")
 
 
 def collect_walls_slabs(model) -> List:
@@ -148,268 +160,311 @@ def collect_walls_slabs(model) -> List:
     return out
 
 
-# -----------------------------
-# Relation-based candidate signals (best-effort)
-# -----------------------------
-
-def connected_elements_via_relconnects(model, se_id: int) -> Set[int]:
-    ids = set()
-    for r in model.by_type("IfcRelConnectsElements"):
-        try:
-            a = r.RelatingElement
-            b = r.RelatedElement
-            if not a or not b:
-                continue
-            if a.id() == se_id:
-                ids.add(b.id())
-            elif b.id() == se_id:
-                ids.add(a.id())
-        except Exception:
-            pass
-    return ids
-
-
-def adjacent_via_spaceboundaries(model, se_id: int) -> Set[int]:
-    ids = set()
-    rels = model.by_type("IfcRelSpaceBoundary")
-    for r in rels:
-        try:
-            e = r.RelatedBuildingElement
-            if not e or e.id() != se_id:
-                continue
-            space = r.RelatingSpace
-            if not space:
-                continue
-            for r2 in rels:
-                try:
-                    if r2.RelatingSpace and r2.RelatingSpace.id() == space.id():
-                        e2 = r2.RelatedBuildingElement
-                        if e2 and e2.id() != se_id:
-                            ids.add(e2.id())
-                except Exception:
-                    pass
-        except Exception:
-            pass
-    return ids
-
-
-# -----------------------------
-# Axes + directions (axis-aligned assumption)
-# -----------------------------
-
-def wall_len_axis_xy(b: BBox) -> int:
+def classify_axis_from_bbox(ifc_type: str, b: BBox) -> str:
+    """Paper assumption: axis-aligned elements; walls along x or y, slabs along z."""
     sx, sy, _ = b.size()
-    return 0 if sx >= sy else 1
+    if is_slab(ifc_type):
+        return "z"
+    return "x" if sx >= sy else "y"
 
 
-def assign_nm_o_labels(elements: List[ElementInfo]) -> None:
+# -----------------------------
+# Candidate/contact filter (implements your point 6)
+# -----------------------------
+def has_sufficient_contact(fe: ElementInfo, se: ElementInfo) -> bool:
     """
-    n = first wall (reference)
-    m = perpendicular wall(s)
-    o = slabs
+    Reject edge-only/point contacts.
+    Accept only if there is sufficient overlap in the expected contact plane.
     """
+    if se.bbox.distance_to(fe.bbox) > CLOSE_TO:
+        return False
+
+    ox, oy, oz = overlap_lengths(se.bbox, fe.bbox)
+
+    se_is_slab = is_slab(se.ifc_type)
+    fe_is_slab = is_slab(fe.ifc_type)
+    se_is_wall = is_wall(se.ifc_type)
+    fe_is_wall = is_wall(fe.ifc_type)
+
+    # Wall–Slab: contact plane should be XY (overlap in X and Y)
+    if (se_is_wall and fe_is_slab) or (se_is_slab and fe_is_wall):
+        area_xy = ox * oy
+        return (ox >= MIN_OVERLAP_LEN and oy >= MIN_OVERLAP_LEN and area_xy >= MIN_OVERLAP_AREA)
+
+    # Wall–Wall: require vertical overlap + one horizontal overlap
+    if se_is_wall and fe_is_wall:
+        if oz < MIN_OVERLAP_LEN:
+            return False
+        return (ox >= MIN_OVERLAP_LEN) or (oy >= MIN_OVERLAP_LEN)
+
+    # Slab–Slab: require XY overlap
+    if se_is_slab and fe_is_slab:
+        area_xy = ox * oy
+        return (ox >= MIN_OVERLAP_LEN and oy >= MIN_OVERLAP_LEN and area_xy >= MIN_OVERLAP_AREA)
+
+    return True
+
+
+# -----------------------------
+# Junction Boxes (JB1..JB6)
+# -----------------------------
+def build_junction_boxes(se: ElementInfo) -> Dict[int, JB]:
+    mnx, mny, mnz = se.bbox.mn
+    mxx, mxy, mxz = se.bbox.mx
+
+    def mk(jb_id: int, mn: Vec3, mx: Vec3) -> JB:
+        return JB(jb_id=jb_id, bbox=BBox(mn, mx), se_id=se.ifc_id, fe_ids=[])
+
+    axis = se.axis
+    jbs: Dict[int, JB] = {}
+
+    if axis == "x":
+        jbs[1] = mk(1, (mnx - OFF_03, mny - OFF_05, mnz), (mxx + OFF_03, mny + OFF_05, mxz))
+        jbs[2] = mk(2, (mnx - OFF_03, mny + OFF_05, mnz), (mxx + OFF_03, mxy - OFF_05, mxz))
+        jbs[3] = mk(3, (mnx - OFF_03, mxy - OFF_05, mnz), (mxx + OFF_03, mxy + OFF_05, mxz))
+
+        jbs[4] = mk(4, (mnx - OFF_03, mny - OFF_05, mnz - OFF_03), (mxx + OFF_03, mxy + OFF_05, mnz + OFF_03))
+        jbs[5] = mk(5, (mnx - OFF_03, mny - OFF_05, mnz + OFF_03), (mxx + OFF_03, mxy + OFF_05, mxz - OFF_03))
+        jbs[6] = mk(6, (mnx - OFF_03, mny - OFF_05, mxz - OFF_03), (mxx + OFF_03, mxy + OFF_05, mxz + OFF_03))
+
+    elif axis == "y":
+        jbs[1] = mk(1, (mnx - OFF_05, mny - OFF_03, mnz), (mnx + OFF_05, mxy + OFF_03, mxz))
+        jbs[2] = mk(2, (mnx + OFF_05, mny - OFF_03, mnz), (mxx - OFF_05, mxy + OFF_03, mxz))
+        jbs[3] = mk(3, (mxx - OFF_05, mny - OFF_03, mnz), (mxx + OFF_05, mxy + OFF_03, mxz))
+
+        jbs[4] = mk(4, (mnx - OFF_05, mny - OFF_03, mnz - OFF_03), (mxx + OFF_05, mxy + OFF_03, mnz + OFF_03))
+        jbs[5] = mk(5, (mnx - OFF_05, mny - OFF_03, mnz + OFF_03), (mxx + OFF_05, mxy + OFF_03, mxz - OFF_03))
+        jbs[6] = mk(6, (mnx - OFF_05, mny - OFF_03, mxz - OFF_03), (mxx + OFF_05, mxy + OFF_03, mxz + OFF_03))
+
+    elif axis == "z":
+        jbs[1] = mk(1, (mnx, mny - OFF_05, mnz - OFF_03), (mxx, mny + OFF_05, mxz + OFF_03))
+        jbs[2] = mk(2, (mnx, mny + OFF_05, mnz - OFF_03), (mxx, mxy - OFF_05, mxz + OFF_03))
+        jbs[3] = mk(3, (mnx, mxy - OFF_05, mnz - OFF_03), (mxx, mxy + OFF_05, mxz + OFF_03))
+
+        jbs[4] = mk(4, (mnx - OFF_05, mny - OFF_05, mnz - OFF_03), (mnx + OFF_05, mxy + OFF_05, mxz + OFF_03))
+        jbs[5] = mk(5, (mnx + OFF_05, mny - OFF_05, mnz - OFF_03), (mxx - OFF_05, mxy + OFF_05, mxz + OFF_03))
+        jbs[6] = mk(6, (mxx - OFF_05, mny - OFF_05, mnz - OFF_03), (mxx + OFF_05, mxy + OFF_05, mxz + OFF_03))
+    else:
+        raise ValueError(f"Unknown axis: {axis}")
+
+    return jbs
+
+
+# -----------------------------
+# DD (robust contact-face based)
+# -----------------------------
+def closest_point_on_se_from_fe(se: BBox, fe: BBox) -> Vec3:
+    return se.clamp_point(fe.center())
+
+
+def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
+    p = closest_point_on_se_from_fe(se.bbox, fe.bbox)
+    smn, smx = se.bbox.mn, se.bbox.mx
+
+    d_xmin = abs(p[0] - smn[0])
+    d_xmax = abs(smx[0] - p[0])
+    d_ymin = abs(p[1] - smn[1])
+    d_ymax = abs(smx[1] - p[1])
+    d_zmin = abs(p[2] - smn[2])
+    d_zmax = abs(smx[2] - p[2])
+
+    face_dists = [
+        ("Xminus", d_xmin),
+        ("Xplus", d_xmax),
+        ("Yminus", d_ymin),
+        ("Yplus", d_ymax),
+        ("Zminus", d_zmin),
+        ("Zplus", d_zmax),
+    ]
+    dd, _ = min(face_dists, key=lambda t: t[1])
+    return dd
+
+
+# -----------------------------
+# FE -> JB assignment (Algorithmus 1–3)
+# -----------------------------
+def assign_fe_to_jb(fe: ElementInfo, se: ElementInfo, jbs: Dict[int, JB]) -> Optional[int]:
+    fe_n = fe.axis
+    se_n = se.axis
+    dd = compute_dd(fe, se)
+
+    FE = fe.bbox
+    JB1 = jbs[1].bbox
+    JB3 = jbs[3].bbox
+    JB4 = jbs[4].bbox
+    JB6 = jbs[6].bbox
+
+    def err():
+        return None
+
+    # Algorithm 1: SE.n = x
+    if se_n == "x":
+        if fe_n == "x":
+            if dd == "Yplus": return 3
+            if dd == "Yminus": return 1
+            if dd == "Zplus": return 6
+            if dd == "Zminus": return 4
+            if dd in ("Xplus", "Xminus"): return err()
+        elif fe_n == "y":
+            if dd in ("Xplus", "Xminus"):
+                if FE.mn[1] >= JB3.mn[1]: return 3
+                if FE.mx[1] <= JB1.mx[1]: return 1
+                return 2
+            if dd == "Yplus": return 3
+            if dd == "Yminus": return 1
+            if dd in ("Zplus", "Zminus"): return err()
+        elif fe_n == "z":
+            if dd in ("Xplus", "Xminus"):
+                if FE.mn[2] >= JB6.mn[2]: return 6
+                if FE.mx[2] <= JB4.mx[2]: return 4
+                return 5
+            if dd == "Zplus": return 6
+            if dd == "Zminus": return 4
+            if dd in ("Yplus", "Yminus"): return err()
+        return err()
+
+    # Algorithm 2: SE.n = y
+    if se_n == "y":
+        if fe_n == "x":
+            if dd in ("Yplus", "Yminus"):
+                if FE.mn[0] >= JB3.mn[0]: return 3
+                if FE.mx[0] <= JB1.mx[0]: return 1
+                return 2
+            if dd == "Xplus": return 3
+            if dd == "Xminus": return 1
+            if dd in ("Zplus", "Zminus"): return err()
+        elif fe_n == "y":
+            if dd == "Xplus": return 3
+            if dd == "Xminus": return 1
+            if dd == "Zplus": return 6
+            if dd == "Zminus": return 4
+            if dd in ("Yplus", "Yminus"): return err()
+        elif fe_n == "z":
+            if dd in ("Yplus", "Yminus"):
+                if FE.mn[2] >= JB6.mn[2]: return 6
+                if FE.mx[2] <= JB4.mx[2]: return 4
+                return 5
+            if dd == "Zplus": return 6
+            if dd == "Zminus": return 4
+            if dd in ("Xplus", "Xminus"): return err()
+        return err()
+
+    # Algorithm 3: SE.n = z
+    if se_n == "z":
+        if fe_n == "x":
+            if dd == "Xplus": return 6
+            if dd == "Xminus": return 4
+            if dd in ("Zplus", "Zminus"):
+                if FE.mn[0] >= JB6.mn[0]: return 6
+                if FE.mx[0] <= JB4.mx[0]: return 4
+                return 5
+            if dd in ("Yplus", "Yminus"): return err()
+        elif fe_n == "y":
+            if dd == "Yplus": return 3
+            if dd == "Yminus": return 1
+            if dd in ("Zplus", "Zminus"):
+                if FE.mn[1] >= JB3.mn[1]: return 3
+                if FE.mx[1] <= JB1.mx[1]: return 1
+                return 2
+            if dd in ("Xplus", "Xminus"): return err()
+        elif fe_n == "z":
+            if dd == "Xplus": return 6
+            if dd == "Xminus": return 4
+            if dd == "Yplus": return 3
+            if dd == "Yminus": return 1
+            if dd in ("Zplus", "Zminus"): return err()
+        return err()
+
+    return None
+
+
+# -----------------------------
+# Connection zones
+# -----------------------------
+def face_areas_from_bbox(b: BBox) -> Dict[str, float]:
+    sx, sy, sz = b.size()
+    return {"x": sy * sz, "y": sx * sz, "z": sx * sy}
+
+
+def smallest_face_axes(b: BBox) -> Set[str]:
+    areas = face_areas_from_bbox(b)
+    sorted_axes = sorted(areas.keys(), key=lambda k: areas[k])
+    return {sorted_axes[0], sorted_axes[1]}
+
+
+def is_on_face(b: BBox, axis: str, p: Vec3) -> bool:
+    if axis == "x":
+        return abs(p[0] - b.mn[0]) <= EPS_FACE or abs(p[0] - b.mx[0]) <= EPS_FACE
+    if axis == "y":
+        return abs(p[1] - b.mn[1]) <= EPS_FACE or abs(p[1] - b.mx[1]) <= EPS_FACE
+    return abs(p[2] - b.mn[2]) <= EPS_FACE or abs(p[2] - b.mx[2]) <= EPS_FACE
+
+
+def cz_for_element_at_contact(elem: ElementInfo, p_on_elem: Vec3) -> str:
+    b = elem.bbox
+    small_axes = smallest_face_axes(b)
+
+    # short: on one of four smallest faces
+    for ax in small_axes:
+        if is_on_face(b, ax, p_on_elem):
+            return "short"
+
+    # else on largest face; border if within 0.5m of in-plane edges
+    areas = face_areas_from_bbox(b)
+    large_axis = max((ax for ax in areas.keys() if ax not in small_axes), key=lambda k: areas[k])
+    in_plane = [ax for ax in ("x", "y", "z") if ax != large_axis]
+
+    def coord(ax: str) -> float:
+        return p_on_elem[0] if ax == "x" else p_on_elem[1] if ax == "y" else p_on_elem[2]
+
+    for ax in in_plane:
+        v = coord(ax)
+        mn = b.mn[0] if ax == "x" else b.mn[1] if ax == "y" else b.mn[2]
+        mx = b.mx[0] if ax == "x" else b.mx[1] if ax == "y" else b.mx[2]
+        if (v - mn) <= OFF_05 + 1e-9 or (mx - v) <= OFF_05 + 1e-9:
+            return "border"
+    return "middle"
+
+
+def assign_dir_labels(elements: List[ElementInfo]) -> None:
     for e in elements:
-        if is_slab(e.ifc_type):
+        if e.axis == "z":
             e.dir_label = "o"
 
-    walls = [e for e in elements if is_wall(e.ifc_type)]
+    walls = [e for e in elements if e.axis in ("x", "y")]
     if not walls:
         return
-
     ref = walls[0]
     ref.dir_label = "n"
-    ref_ax = wall_len_axis_xy(ref.bbox)
-
+    ref_axis = ref.axis
     for w in walls[1:]:
-        ax = wall_len_axis_xy(w.bbox)
-        w.dir_label = "n" if ax == ref_ax else "m"
+        w.dir_label = "n" if w.axis == ref_axis else "m"
 
 
-# -----------------------------
-# Junction boxes
-# -----------------------------
-
-def build_junction_boxes_for_wall(se: ElementInfo) -> List[JunctionBox]:
-    b = se.bbox
-    mn = list(b.mn)
-    mx = list(b.mx)
-    len_ax = wall_len_axis_xy(b)
-    thick_ax = 1 if len_ax == 0 else 0
-    h_ax = 2
-    mid_len = (mn[len_ax] + mx[len_ax]) / 2.0
-
-    def mk(mn2, mx2): return BBox(tuple(mn2), tuple(mx2))
-
-    boxes: List[JunctionBox] = []
-
-    for jb_id, (a0, a1) in enumerate([(mn[len_ax] - PAD, mid_len + PAD),
-                                     (mid_len - PAD, mx[len_ax] + PAD)], start=1):
-        mn2, mx2 = mn.copy(), mx.copy()
-        mn2[thick_ax] = mn[thick_ax] - SPLIT
-        mx2[thick_ax] = mn[thick_ax] + SPLIT
-        mn2[len_ax], mx2[len_ax] = a0, a1
-        boxes.append(JunctionBox(jb_id, mk(mn2, mx2), elements=[se]))
-
-    for jb_id, (a0, a1) in enumerate([(mn[len_ax] - PAD, mid_len + PAD),
-                                     (mid_len - PAD, mx[len_ax] + PAD)], start=3):
-        mn2, mx2 = mn.copy(), mx.copy()
-        mn2[thick_ax] = mx[thick_ax] - SPLIT
-        mx2[thick_ax] = mx[thick_ax] + SPLIT
-        mn2[len_ax], mx2[len_ax] = a0, a1
-        boxes.append(JunctionBox(jb_id, mk(mn2, mx2), elements=[se]))
-
-    mn5, mx5 = mn.copy(), mx.copy()
-    mn5[h_ax] = mn[h_ax] - DIST_THRESH
-    mx5[h_ax] = mn[h_ax] + DIST_THRESH
-    mn5[0] -= PAD; mn5[1] -= PAD
-    mx5[0] += PAD; mx5[1] += PAD
-    boxes.append(JunctionBox(5, mk(mn5, mx5), elements=[se]))
-
-    mn6, mx6 = mn.copy(), mx.copy()
-    mn6[h_ax] = mx[h_ax] - DIST_THRESH
-    mx6[h_ax] = mx[h_ax] + DIST_THRESH
-    mn6[0] -= PAD; mn6[1] -= PAD
-    mx6[0] += PAD; mx6[1] += PAD
-    boxes.append(JunctionBox(6, mk(mn6, mx6), elements=[se]))
-
-    return boxes
-
-
-def build_junction_boxes_for_slab(se: ElementInfo) -> List[JunctionBox]:
-    b = se.bbox
-    mn = list(b.mn)
-    mx = list(b.mx)
-
-    def mk(mn2, mx2): return BBox(tuple(mn2), tuple(mx2))
-    boxes: List[JunctionBox] = []
-
-    # perimeter bands (JB1..4)
-    mnw, mxw = mn.copy(), mx.copy()
-    mnw[0] = mn[0] - PAD
-    mxw[0] = mn[0] + BORDER_W + PAD
-    mnw[1] -= PAD; mxw[1] += PAD
-    boxes.append(JunctionBox(1, mk(mnw, mxw), elements=[se]))
-
-    mne, mxe = mn.copy(), mx.copy()
-    mne[0] = mx[0] - BORDER_W - PAD
-    mxe[0] = mx[0] + PAD
-    mne[1] -= PAD; mxe[1] += PAD
-    boxes.append(JunctionBox(2, mk(mne, mxe), elements=[se]))
-
-    mns, mxs = mn.copy(), mx.copy()
-    mns[1] = mn[1] - PAD
-    mxs[1] = mn[1] + BORDER_W + PAD
-    mns[0] -= PAD; mxs[0] += PAD
-    boxes.append(JunctionBox(3, mk(mns, mxs), elements=[se]))
-
-    mnn, mxn = mn.copy(), mx.copy()
-    mnn[1] = mx[1] - BORDER_W - PAD
-    mxn[1] = mx[1] + PAD
-    mnn[0] -= PAD; mxn[0] += PAD
-    boxes.append(JunctionBox(4, mk(mnn, mxn), elements=[se]))
-
-    # below (JB5) and above (JB6)
-    mnb, mxb = mn.copy(), mx.copy()
-    mnb[2] = mn[2] - DIST_THRESH
-    mxb[2] = mn[2] + DIST_THRESH
-    mnb[0] -= PAD; mnb[1] -= PAD
-    mxb[0] += PAD; mxb[1] += PAD
-    boxes.append(JunctionBox(5, mk(mnb, mxb), elements=[se]))
-
-    mna, mxa = mn.copy(), mx.copy()
-    mna[2] = mx[2] - DIST_THRESH
-    mxa[2] = mx[2] + DIST_THRESH
-    mna[0] -= PAD; mna[1] -= PAD
-    mxa[0] += PAD; mxa[1] += PAD
-    boxes.append(JunctionBox(6, mk(mna, mxa), elements=[se]))
-
-    return boxes
-
-
-# -----------------------------
-# Pairwise connection zones CZ(e->o) + neutral "0"
-# -----------------------------
-
-def classify_zone_on_element(elem: ElementInfo, contact_bbox: BBox) -> str:
-    """
-    Generic but stable:
-    - short if contact centroid is near any bbox extreme face (within SHORT_W)
-    - else border/middle on dominant face:
-      * slab: border near x/y edges
-      * wall: border near length edges or height edges
-    """
-    c = contact_bbox.center()
-    mn, mx = elem.bbox.mn, elem.bbox.mx
-    sx, sy, sz = elem.bbox.size()
-
-    # short heuristic near any min/max face
-    if (
-        abs(c[0] - mn[0]) <= SHORT_W or abs(mx[0] - c[0]) <= SHORT_W or
-        abs(c[1] - mn[1]) <= SHORT_W or abs(mx[1] - c[1]) <= SHORT_W or
-        abs(c[2] - mn[2]) <= SHORT_W or abs(mx[2] - c[2]) <= SHORT_W
-    ):
-        return "short"
-
-    if is_slab(elem.ifc_type):
-        near_x = (c[0] <= mn[0] + BORDER_W) or (c[0] >= mx[0] - BORDER_W)
-        near_y = (c[1] <= mn[1] + BORDER_W) or (c[1] >= mx[1] - BORDER_W)
-        return "border" if (near_x or near_y) else "middle"
-
-    # wall
-    thick_ax = 0 if sx <= sy else 1
-    len_ax = 1 if thick_ax == 0 else 0
-    near_len = (c[len_ax] <= mn[len_ax] + BORDER_W) or (c[len_ax] >= mx[len_ax] - BORDER_W)
-    near_h = (c[2] <= mn[2] + BORDER_W) or (c[2] >= mx[2] - BORDER_W)
-    return "border" if (near_len or near_h) else "middle"
-
-
-def compute_pair_cz(e: ElementInfo, o: ElementInfo) -> Optional[str]:
-    """
-    If AABBs intersect -> classify zone on e.
-    If not -> None (handled by neutral logic elsewhere).
-    """
-    inter = e.bbox.intersection(o.bbox)
-    if inter is None:
-        return None
-    return classify_zone_on_element(e, inter)
-
-
-def build_cz_matrix(elements: List[ElementInfo], separating_id: int) -> Dict[int, Dict[int, str]]:
-    """
-    cz[e][o] for all ordered pairs e!=o.
-    - if e intersects o -> short/border/middle
-    - else if (e and o are BOTH flankers, and both intersect separator, and do NOT intersect each other)
-      -> cz[e][o] = "0"  and cz[o][e] = "0"
-    """
-    ids = [e.ifc_id for e in elements]
+def build_cz_matrix(elements: List[ElementInfo], se_id: int) -> Dict[int, Dict[int, str]]:
     by_id = {e.ifc_id: e for e in elements}
+    ids = [e.ifc_id for e in elements]
     cz: Dict[int, Dict[int, str]] = {i: {} for i in ids}
 
-    # first pass: actual contacts
+    # direct CZ for sufficiently contacting pairs
     for i in ids:
         for j in ids:
             if i == j:
                 continue
-            v = compute_pair_cz(by_id[i], by_id[j])
-            if v is not None:
-                cz[i][j] = v
+            ei, ej = by_id[i], by_id[j]
+            if not has_sufficient_contact(ej, ei):
+                continue
+            p = ei.bbox.clamp_point(ej.bbox.center())
+            cz[i][j] = cz_for_element_at_contact(ei, p)
 
-    # neutral "0" for flanker-flanker separated by separator
-    sep = by_id[separating_id]
-    flanker_ids = [i for i in ids if i != separating_id]
-
-    for a in flanker_ids:
-        for b in flanker_ids:
-            if a >= b:
-                continue
-            # must not intersect directly
-            if by_id[a].bbox.intersects(by_id[b].bbox):
-                continue
-            # but both must intersect separator
-            if not by_id[a].bbox.intersects(sep.bbox):
-                continue
-            if not by_id[b].bbox.intersects(sep.bbox):
-                continue
+    # neutral 0 for flanker-flanker separated by SE
+    se = by_id[se_id]
+    fl = [i for i in ids if i != se_id]
+    for a, b in combinations(fl, 2):
+        ea, eb = by_id[a], by_id[b]
+        if has_sufficient_contact(eb, ea):
+            continue
+        if ea.bbox.distance_to(se.bbox) <= CLOSE_TO and eb.bbox.distance_to(se.bbox) <= CLOSE_TO:
             cz[a][b] = "0"
             cz[b][a] = "0"
 
@@ -417,235 +472,130 @@ def build_cz_matrix(elements: List[ElementInfo], separating_id: int) -> Dict[int
 
 
 # -----------------------------
-# Rule engine with pairwise CZ constraints
+# Junction type rules (subset – extend as needed)
 # -----------------------------
+def mk_rule(jtype: str, dirs: List[str], cz_constraints: List[Tuple[int, int, str]]) -> Dict[str, Any]:
+    return {"type": jtype, "k": len(dirs), "dirs": dirs, "cz": cz_constraints}
 
-# We map local indices 1..k (after sorting by dir n,m,o) to actual ids
-# Rule format:
 
-RULES = [
-    # -------------------------
-    # 2-Element Junctions (k=2)  --- ROBUST ---
-    # -------------------------
+RULES: List[Dict[str, Any]] = [
+    mk_rule("Lh1-2", ["n", "m"], [(1, 2, "short"), (2, 1, "border")]),
+    mk_rule("Lv1-2", ["n", "o"], [(1, 2, "short"), (2, 1, "border")]),
+    mk_rule("Tv2-13", ["n", "o"], [(1, 2, "short"), (2, 1, "middle")]),
+    mk_rule("Th1-24", ["n", "m"], [(1, 2, "short"), (2, 1, "middle")]),
+    mk_rule("Tv1-24", ["n", "o"], [(1, 2, "middle"), (2, 1, "short")]),
 
-    # Lh1-2 (Wall-Wall L)
-    # Paper: n short, m border
-    # Robust: m->n may appear as short depending on bbox contact -> allow short|border
-    {
-        "type": "Lh1-2",
-        "k": 2,
-        "dir": {1: "n", 2: "m"},
-        "cz": [
-            (1, 2, "short"),
-            (2, 1, {"border", "short"}),
-        ],
-    },
+    mk_rule("Th2-1-4", ["n", "m", "m"], [
+        (1, 2, "border"), (1, 3, "border"),
+        (2, 1, "short"),  (3, 1, "short"),
+        (2, 3, "0"),      (3, 2, "0"),
+    ]),
 
-    # Lv1-2 (Wall-Slab L)
-    # Paper: n short, o border
-    # Robust: slab->wall sometimes becomes short (bbox contact at edge) -> allow short|border
-    {
-        "type": "Lv1-2",
-        "k": 2,
-        "dir": {1: "n", 2: "o"},
-        "cz": [
-            (1, 2, "short"),
-            (2, 1, {"border", "short"}),
-        ],
-    },
+    mk_rule("Tv2-1-4", ["n", "n", "o"], [
+        (1, 3, "short"), (2, 3, "short"),
+        (1, 2, "0"), (2, 1, "0"),
+    ]),
 
-    # Tv2-13
-    # Paper: n short, o middle
-    # Robust: o->n can appear border/middle depending on your slab border width and contact centroid -> allow middle|border
-    {
-        "type": "Tv2-13",
-        "k": 2,
-        "dir": {1: "n", 2: "o"},
-        "cz": [
-            (1, 2, "short"),
-            (2, 1, {"middle", "border"}),
-        ],
-    },
-
-    # Th1-24
-    # Paper: n short, m middle
-    # Robust: m->n can drift to border/middle -> allow middle|border
-    {
-        "type": "Th1-24",
-        "k": 2,
-        "dir": {1: "n", 2: "m"},
-        "cz": [
-            (1, 2, "short"),
-            (2, 1, {"middle", "border"}),
-        ],
-    },
-
-    # Tv1-24
-    # Paper: n middle, o short
-    # Robust: n->o sometimes border/middle -> allow middle|border
-    {
-        "type": "Tv1-24",
-        "k": 2,
-        "dir": {1: "n", 2: "o"},
-        "cz": [
-            (1, 2, {"middle", "border"}),
-            (2, 1, "short"),
-        ],
-    },
-
-    # -------------------------
-    # 3-Element Junctions (k=3)
-    # -------------------------
-
-    # Th2-1-4  (dein bestätigter korrekter Fall)
-    {
-        "type": "Th2-1-4",
-        "k": 3,
-        "dir": {1: "n", 2: "m", 3: "m"},
-        "cz": [
-            (1, 2, "border"),
-            (1, 3, "border"),
-            (2, 1, "short"),
-            (3, 1, "short"),
-            (2, 3, "0"),
-            (3, 2, "0"),
-        ],
-    },
-
-    # Tv2-1-4  (dein funktionierender Fall: n,n,o + n<->n = 0 + n->o short)
-    {
-        "type": "Tv2-1-4",
-        "k": 3,
-        "dir": {1: "n", 2: "n", 3: "o"},
-        "cz": [
-            (1, 3, "short"),
-            (2, 3, "short"),
-            (1, 2, "0"),
-            (2, 1, "0"),
-            # optional streng:
-            # (3, 1, {"short", "border"}),
-            # (3, 2, {"short", "border"}),
-        ],
-    },
-
-    # OPTIONAL: wenn du Tv1-2:4 brauchst (aus deiner Abb. 5.43)
-    # o short short; n border short; n border short
-    # => o->n short, n->o border|short; n<->n short
-    {
-        "type": "Tv1-2:4",
-        "k": 3,
-        "dir": {1: "n", 2: "n", 3: "o"},
-        "cz": [
-            (3, 1, "short"),
-            (3, 2, "short"),
-            (1, 3, {"border", "short"}),
-            (2, 3, {"border", "short"}),
-            (1, 2, {"short", "border"}),  # je nach Wand/Wand-Lage
-            (2, 1, {"short", "border"}),
-        ],
-    },
+    # Tv1-2:4 + alias Tv1-2-4
+    mk_rule("Tv1-2:4", ["n", "n", "o"], [
+        (3, 1, "short"), (3, 2, "short"),
+        (1, 3, "border"), (2, 3, "border"),
+        (1, 2, "short"), (2, 1, "short"),
+    ]),
+    mk_rule("Tv1-2-4", ["n", "n", "o"], [
+        (3, 1, "short"), (3, 2, "short"),
+        (1, 3, "border"), (2, 3, "border"),
+        (1, 2, "short"), (2, 1, "short"),
+    ]),
 ]
 
 
-def match_rules(elements: List[ElementInfo], separating_id: int) -> Tuple[str, Dict[str, Any]]:
-    """
-    Sort local order: n, m, o; then by id.
-    Compute CZ matrix and test rules.
-    """
-    def sort_key(e: ElementInfo):
-        order = {"n": 0, "m": 1, "o": 2, "": 9}
-        return (order.get(e.dir_label, 9), e.ifc_id)
+def multiset(lst: List[str]) -> Dict[str, int]:
+    d: Dict[str, int] = {}
+    for x in lst:
+        d[x] = d.get(x, 0) + 1
+    return d
 
-    elems_sorted = sorted(elements, key=sort_key)
-    idx_to_id = {i + 1: elems_sorted[i].ifc_id for i in range(len(elems_sorted))}
-    id_to_idx = {v: k for k, v in idx_to_id.items()}
 
-    cz = build_cz_matrix(elements, separating_id)
+def match_rule(elements: List[ElementInfo], se_id: int) -> Tuple[str, Dict[str, Any]]:
+    assign_dir_labels(elements)
+    cz = build_cz_matrix(elements, se_id)
 
     dbg = {
         "k": len(elements),
-        "local_order": {i: idx_to_id[i] for i in idx_to_id},
         "dirs": {e.ifc_id: e.dir_label for e in elements},
-        "cz_pairs": {str(k): cz[k] for k in cz},
-        "separating_id": separating_id,
+        "cz_pairs": {str(i): cz[i] for i in cz},
+        "se_id": se_id,
     }
+
+    ids = [e.ifc_id for e in elements]
+    id_to_dir = {e.ifc_id: e.dir_label for e in elements}
 
     for rule in RULES:
         if rule["k"] != len(elements):
             continue
-
-        # check dirs
-        ok = True
-        for idx, d in rule["dir"].items():
-            eid = idx_to_id.get(idx)
-            if eid is None:
-                ok = False
-                break
-            if next(e for e in elements if e.ifc_id == eid).dir_label != d:
-                ok = False
-                break
-        if not ok:
+        if multiset(rule["dirs"]) != multiset([id_to_dir[i] for i in ids]):
             continue
 
-        # check pairwise CZ
-        for (a_idx, b_idx, want) in rule["cz"]:
-            a_id = idx_to_id.get(a_idx)
-            b_id = idx_to_id.get(b_idx)
-            if a_id is None or b_id is None:
-                ok = False
-                break
-            got = cz.get(a_id, {}).get(b_id)
-            # want can be:
-            # - str: exact match
-            # - set/list/tuple: any-of match
-            if isinstance(want, (set, list, tuple)):
-                if got not in want:
+        role_dirs = {r + 1: rule["dirs"][r] for r in range(rule["k"])}
+
+        for perm in permutations(ids):
+            role_to_id = {r + 1: perm[r] for r in range(len(perm))}
+
+            ok = True
+            for r, reqd in role_dirs.items():
+                if id_to_dir[role_to_id[r]] != reqd:
                     ok = False
                     break
-            else:
+            if not ok:
+                continue
+
+            for (ra, rb, want) in rule["cz"]:
+                a_id = role_to_id[ra]
+                b_id = role_to_id[rb]
+                got = cz.get(a_id, {}).get(b_id)
                 if got != want:
                     ok = False
                     break
 
-        if ok:
-            return rule["type"], dbg
+            if ok:
+                dbg["matched_rule_perm"] = {str(r): role_to_id[r] for r in role_to_id}
+                return rule["type"], dbg
 
     return "UNKNOWN", dbg
 
 
 # -----------------------------
-# Dedup
+# Post processing: keep only maximal junctions (superset wins)
 # -----------------------------
-
-def _type_score(t: str) -> int:
-    if t == "NONE":
-        return 0
-    if t == "UNKNOWN":
-        return 1
-    return 2
+def junction_score(j: Dict[str, Any]) -> Tuple[int, int]:
+    jt = j.get("junction_type", "UNKNOWN")
+    recognized = 1 if jt not in ("UNKNOWN", "NONE") else 0
+    size = len(j.get("element_ids", []))
+    return (recognized, size)
 
 
-def dedupe_unique(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    best: Dict[FrozenSet[int], Dict[str, Any]] = {}
-    for r in rows:
-        key = frozenset(r["element_ids"])
-        if key not in best or _type_score(r["junction_type"]) > _type_score(best[key]["junction_type"]):
-            best[key] = r
-    out = [v for v in best.values() if v["junction_type"] != "NONE"]
-    out.sort(key=lambda x: (x["junction_type"], x["element_ids"]))
+def keep_only_maximal_junctions(junctions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    sets = [(frozenset(j["element_ids"]), j) for j in junctions]
+    sets.sort(key=lambda x: (junction_score(x[1])[0], junction_score(x[1])[1]), reverse=True)
+
+    kept: List[Tuple[frozenset, Dict[str, Any]]] = []
+    for s, j in sets:
+        if any(s < ks for ks, _ in kept):
+            continue
+        kept.append((s, j))
+
+    out = [j for _, j in kept]
+    out.sort(key=lambda r: (r["junction_type"], r["element_ids"]))
     return out
 
 
 # -----------------------------
-# Main analysis
+# Analyze IFC
 # -----------------------------
-
-def analyze_ifc(ifc_path: str,
-                out_raw_json: str = "junctions_raw.json",
-                out_unique_json: str = "junctions_unique.json") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-
+def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     model = ifcopenshell.open(ifc_path)
-    settings = create_settings()
+    settings = create_geom_settings()
 
     raw = collect_walls_slabs(model)
 
@@ -654,142 +604,125 @@ def analyze_ifc(ifc_path: str,
         bb = element_bbox(settings, e)
         if bb is None:
             continue
+        ax = classify_axis_from_bbox(e.is_a(), bb)
         infos[e.id()] = ElementInfo(
             ifc_id=e.id(),
             guid=getattr(e, "GlobalId", "") or "",
             ifc_type=e.is_a(),
             name=getattr(e, "Name", "") or "",
             bbox=bb,
+            axis=ax,
         )
 
-    separating_ids = [eid for eid, inf in infos.items() if is_wall(inf.ifc_type) or is_slab(inf.ifc_type)]
+    se_ids = [i for i, inf in infos.items() if is_wall(inf.ifc_type) or is_slab(inf.ifc_type)]
 
     rows: List[Dict[str, Any]] = []
 
-    for se_id in separating_ids:
+    for se_id in se_ids:
         se = infos[se_id]
+        jbs = build_junction_boxes(se)
 
-        # candidates: relations + distance to all walls/slabs (fallback)
-        rel_ids = connected_elements_via_relconnects(model, se_id)
-        sb_ids = adjacent_via_spaceboundaries(model, se_id)
-        candidate_ids = (rel_ids | sb_ids)
-
-        # fallback: if relations empty, consider all walls/slabs
-        if not candidate_ids:
-            candidate_ids = set(infos.keys())
-
-        candidate_ids.discard(se_id)
-        candidate_ids = {cid for cid in candidate_ids if cid in infos and (is_wall(infos[cid].ifc_type) or is_slab(infos[cid].ifc_type))}
-
-        # distance filter
-        flankers = []
-        for cid in candidate_ids:
-            d = se.bbox.distance_to(infos[cid].bbox)
-            if d <= DIST_THRESH:
-                fe = infos[cid]
-                fe.dist = d
-                flankers.append(fe)
-
-        # junction boxes
-        jbs = build_junction_boxes_for_wall(se) if is_wall(se.ifc_type) else build_junction_boxes_for_slab(se)
-
-        # assign flankers to best JB
-        for fe in flankers:
-            best_jb = None
-            best_score = float("inf")
-            fe_center = np.array(fe.bbox.center(), dtype=float)
-            for jb in jbs:
-                if jb.bbox.intersects(fe.bbox):
-                    jb_center = np.array(jb.bbox.center(), dtype=float)
-                    score = float(np.linalg.norm(jb_center - fe_center))
-                    if score < best_score:
-                        best_score = score
-                        best_jb = jb
-            if best_jb is not None and len(best_jb.elements) < MAX_ELEMS_PER_JB:
-                best_jb.elements.append(fe)
-
-        # --- (A) per-JB rows ---
-        for jb in jbs:
-            elems = jb.elements[:]
-            if len(elems) <= 1:
-                rows.append({
-                    "element_ids": [se_id],
-                    "junction_type": "NONE",
-                    "junction_scope": f"JB{jb.jb_id}",
-                    "debug": {"reason": "no flanking"},
-                })
+        # candidates: all walls/slabs with sufficient (not edge-only) contact to SE
+        candidates: List[ElementInfo] = []
+        for fe_id, fe in infos.items():
+            if fe_id == se_id:
                 continue
+            if not (is_wall(fe.ifc_type) or is_slab(fe.ifc_type)):
+                continue
+            if has_sufficient_contact(fe, se):
+                candidates.append(fe)
 
-            assign_nm_o_labels(elems)
-            jtype, dbg = match_rules(elems, separating_id=se_id)
+        # JB assignment
+        for fe in candidates:
+            jb_id = assign_fe_to_jb(fe, se, jbs)
+            if jb_id is None:
+                continue
+            if fe.ifc_id not in jbs[jb_id].fe_ids:
+                jbs[jb_id].fe_ids.append(fe.ifc_id)
+
+        # per-JB junctions
+        for jb_id, jb in sorted(jbs.items(), key=lambda x: x[0]):
+            fe_list = jb.fe_ids[:3]
+            if not fe_list:
+                continue
+            elem_ids = [jb.se_id] + fe_list
+            elems = [infos[i] for i in elem_ids]
+            jtype, dbg = match_rule(elems, se_id)
 
             rows.append({
-                "element_ids": sorted([e.ifc_id for e in elems]),
+                "junction_scope": f"JB{jb_id}",
+                "junction_box": jb_id,
+                "element_ids": sorted(elem_ids),
                 "junction_type": jtype,
-                "junction_scope": f"JB{jb.jb_id}",
                 "elements": [{
                     "ifc_id": e.ifc_id,
                     "guid": e.guid,
                     "type": e.ifc_type,
                     "name": e.name,
+                    "axis": e.axis,
                     "dir": e.dir_label,
-                    "dist": e.dist,
+                    "bbox": {"mn": list(e.bbox.mn), "mx": list(e.bbox.mx)},
                 } for e in elems],
                 "debug": dbg,
             })
 
-        # --- (B) combined junction per separating element ---
-        # collect all flankers assigned anywhere to any JB
-        combined_ids: Set[int] = set([se_id])
-        for jb in jbs:
-            for e in jb.elements:
-                combined_ids.add(e.ifc_id)
-
-        if len(combined_ids) >= 3:
-            # keep up to MAX_ELEMS_COMBINED: se + nearest flankers
-            fl_sorted = sorted([infos[i] for i in combined_ids if i != se_id], key=lambda x: x.dist)
-            keep = [se] + fl_sorted[: (MAX_ELEMS_COMBINED - 1)]
-            elems = keep
-
-            assign_nm_o_labels(elems)
-            jtype, dbg = match_rules(elems, separating_id=se_id)
+        # COMBINED junction uses all close candidates (not only assigned via JB), pick closest 3
+        if candidates:
+            cand_sorted = sorted(candidates, key=lambda fe: se.bbox.distance_to(fe.bbox))
+            elem_ids = [se_id] + [fe.ifc_id for fe in cand_sorted[:3]]
+            elems = [infos[i] for i in elem_ids]
+            jtype, dbg = match_rule(elems, se_id)
 
             rows.append({
-                "element_ids": sorted([e.ifc_id for e in elems]),
-                "junction_type": jtype,
                 "junction_scope": "COMBINED",
+                "junction_box": None,
+                "element_ids": sorted(elem_ids),
+                "junction_type": jtype,
                 "elements": [{
                     "ifc_id": e.ifc_id,
                     "guid": e.guid,
                     "type": e.ifc_type,
                     "name": e.name,
+                    "axis": e.axis,
                     "dir": e.dir_label,
-                    "dist": e.dist,
+                    "bbox": {"mn": list(e.bbox.mn), "mx": list(e.bbox.mx)},
                 } for e in elems],
                 "debug": dbg,
             })
 
-    unique = dedupe_unique(rows)
+    # Deduplicate exact element sets, prefer recognized types
+    def base_score(t: str) -> int:
+        return 2 if t not in ("UNKNOWN", "NONE") else 1 if t == "UNKNOWN" else 0
 
-    with open(out_raw_json, "w", encoding="utf-8") as f:
-        json.dump(rows, f, ensure_ascii=False, indent=2)
+    best: Dict[Tuple[int, ...], Dict[str, Any]] = {}
+    for r in rows:
+        key = tuple(sorted(r["element_ids"]))
+        if key not in best or base_score(r["junction_type"]) > base_score(best[key]["junction_type"]):
+            best[key] = r
 
-    with open(out_unique_json, "w", encoding="utf-8") as f:
-        json.dump(unique, f, ensure_ascii=False, indent=2)
+    unique = list(best.values())
+    unique = keep_only_maximal_junctions(unique)
 
+    unique.sort(key=lambda x: (x["junction_type"], x["element_ids"]))
     return unique, rows
 
 
 def main():
     ifc_path = "./ifc-models/model_Tv2-1-4.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
-        print(f"ERROR: IFC file not found: {ifc_path}")
+        print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
 
-    unique, rows = analyze_ifc(ifc_path)
+    unique, debug = analyze(ifc_path)
+
+    with open("junctions_unique.json", "w", encoding="utf-8") as f:
+        json.dump(unique, f, ensure_ascii=False, indent=2)
+    with open("junctions_debug.json", "w", encoding="utf-8") as f:
+        json.dump(debug, f, ensure_ascii=False, indent=2)
+
     print("Done.")
-    print(f"- Raw:    {len(rows)} -> junctions_raw.json")
-    print(f"- Unique: {len(unique)} -> junctions_unique.json")
+    print(f"- junctions_unique.json: {len(unique)}")
+    print(f"- junctions_debug.json : {len(debug)}")
 
 
 if __name__ == "__main__":

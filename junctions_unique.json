@@ -1,157 +1,102 @@
 [
   {
-    "element_ids": [
-      56,
-      142
-    ],
-    "junction_type": "Lv1-2",
-    "junction_scope": "JB6",
-    "elements": [
-      {
-        "ifc_id": 142,
-        "guid": "1IoXKV3UD9EAy5OOpLu4JJ",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "dir": "n",
-        "dist": 0.0
-      },
-      {
-        "ifc_id": 56,
-        "guid": "2m9OIsdJX4kvGznFAGvJDb",
-        "type": "IfcSlab",
-        "name": "Floor:DeckenInstanz:316140",
-        "dir": "o",
-        "dist": 0.0
-      }
-    ],
-    "debug": {
-      "k": 2,
-      "local_order": {
-        "1": 142,
-        "2": 56
-      },
-      "dirs": {
-        "142": "n",
-        "56": "o"
-      },
-      "cz_pairs": {
-        "142": {
-          "56": "short"
-        },
-        "56": {
-          "142": "short"
-        }
-      },
-      "separating_id": 142
-    }
-  },
-  {
-    "element_ids": [
-      56,
-      190
-    ],
-    "junction_type": "Lv1-2",
     "junction_scope": "JB5",
-    "elements": [
-      {
-        "ifc_id": 190,
-        "guid": "0OyKBZP417revh_YJGMIOI",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "dir": "n",
-        "dist": 0.0
-      },
-      {
-        "ifc_id": 56,
-        "guid": "2m9OIsdJX4kvGznFAGvJDb",
-        "type": "IfcSlab",
-        "name": "Floor:DeckenInstanz:316140",
-        "dir": "o",
-        "dist": 0.0
-      }
-    ],
-    "debug": {
-      "k": 2,
-      "local_order": {
-        "1": 190,
-        "2": 56
-      },
-      "dirs": {
-        "190": "n",
-        "56": "o"
-      },
-      "cz_pairs": {
-        "190": {
-          "56": "short"
-        },
-        "56": {
-          "190": "short"
-        }
-      },
-      "separating_id": 190
-    }
-  },
-  {
+    "junction_box": 5,
     "element_ids": [
       56,
       142,
       190
     ],
     "junction_type": "Tv2-1-4",
-    "junction_scope": "COMBINED",
     "elements": [
       {
         "ifc_id": 56,
         "guid": "2m9OIsdJX4kvGznFAGvJDb",
         "type": "IfcSlab",
         "name": "Floor:DeckenInstanz:316140",
+        "axis": "z",
         "dir": "o",
-        "dist": 0.0
-      },
-      {
-        "ifc_id": 190,
-        "guid": "0OyKBZP417revh_YJGMIOI",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "dir": "n",
-        "dist": 0.0
+        "bbox": {
+          "mn": [
+            -1.012057685452594,
+            0.183096070968219,
+            1.0000000000000002
+          ],
+          "mx": [
+            -0.01205768545259378,
+            1.183096070968219,
+            1.4019000000000001
+          ]
+        }
       },
       {
         "ifc_id": 142,
         "guid": "1IoXKV3UD9EAy5OOpLu4JJ",
         "type": "IfcWallStandardCase",
         "name": "WandInstanz",
+        "axis": "x",
         "dir": "n",
-        "dist": 0.0
+        "bbox": {
+          "mn": [
+            -1.0120576854525938,
+            0.6315960709682165,
+            0.0
+          ],
+          "mx": [
+            -0.012057685452593581,
+            1.1830960709682163,
+            1.0000000000000002
+          ]
+        }
+      },
+      {
+        "ifc_id": 190,
+        "guid": "0OyKBZP417revh_YJGMIOI",
+        "type": "IfcWallStandardCase",
+        "name": "WandInstanz",
+        "axis": "x",
+        "dir": "n",
+        "bbox": {
+          "mn": [
+            -1.0120576854525938,
+            0.6315960709682165,
+            1.4019000000000001
+          ],
+          "mx": [
+            -0.012057685452593581,
+            1.1830960709682163,
+            2.4019000000000004
+          ]
+        }
       }
     ],
     "debug": {
       "k": 3,
-      "local_order": {
-        "1": 142,
-        "2": 190,
-        "3": 56
-      },
       "dirs": {
         "56": "o",
-        "190": "n",
-        "142": "n"
+        "142": "n",
+        "190": "n"
       },
       "cz_pairs": {
         "56": {
-          "190": "short",
-          "142": "short"
-        },
-        "190": {
-          "56": "short",
-          "142": "0"
+          "142": "border",
+          "190": "border"
         },
         "142": {
           "56": "short",
           "190": "0"
+        },
+        "190": {
+          "56": "short",
+          "142": "0"
         }
       },
-      "separating_id": 56
+      "se_id": 56,
+      "matched_rule_perm": {
+        "1": 142,
+        "2": 190,
+        "3": 56
+      }
     }
   }
 ]
