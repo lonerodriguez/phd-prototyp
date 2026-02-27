@@ -4,16 +4,17 @@
 """
 Paper-konforme Stoßstellenanalyse (Hellwig Diss-Auszug) – OPTIMIERT
 
-Änderungen (aktueller Stand):
+Features:
 - DD (distance direction) robust über nächstgelegene SE-Fläche am Kontaktpunkt
 - Kandidaten-/CZ-Filter gegen "nur Kante / nur Punkt"-Kontakte (Mindest-Überlappung)
+- Wall–Wall zusätzlich: flächenhafter Kontakt bei Z-Berührung (gestapelte Wände) wird erkannt
 - FE->JB Zuordnung per Algorithmus 1–3
 - Connection Zones short/border/middle nach BBox-Flächen-Logik + border strip 0.5m
 - Junction type matching permutation-invariant
 - Ausgabe: nur maximal (größte) Junctions (Superset wins)
 
 Usage:
-  python ifc_junctions_paper_optimized.py            # reads ./model.ifc
+  python ifc_junctions_paper_optimized.py                # reads ./model.ifc
   python ifc_junctions_paper_optimized.py my.ifc
 
 Outputs:
@@ -40,7 +41,7 @@ import numpy as np
 # -----------------------------
 OFF_03 = 0.30        # +/-0.3 m
 OFF_05 = 0.50        # +/-0.5 m
-CLOSE_TO = 0.30      # "close to" threshold
+CLOSE_TO = 0.30      # "close to" threshold (meters)
 
 # Reject edge-only / point contacts:
 MIN_OVERLAP_LEN = 0.05   # 5 cm
@@ -83,21 +84,6 @@ class BBox:
     def size(self) -> Vec3:
         return (self.mx[0] - self.mn[0], self.mx[1] - self.mn[1], self.mx[2] - self.mn[2])
 
-    def clamp_point(self, p: Vec3) -> Vec3:
-        return (
-            min(max(p[0], self.mn[0]), self.mx[0]),
-            min(max(p[1], self.mn[1]), self.mx[1]),
-            min(max(p[2], self.mn[2]), self.mx[2]),
-        )
-
-    def center(self) -> Vec3:
-        return ((self.mn[0] + self.mx[0]) * 0.5,
-                (self.mn[1] + self.mx[1]) * 0.5,
-                (self.mn[2] + self.mx[2]) * 0.5)
-
-    def size(self) -> Vec3:
-        return (self.mx[0] - self.mn[0], self.mx[1] - self.mn[1], self.mx[2] - self.mn[2])
-
 
 def overlap_1d(a0: float, a1: float, b0: float, b1: float) -> float:
     return max(0.0, min(a1, b1) - max(a0, b0))
@@ -108,6 +94,15 @@ def overlap_lengths(a: BBox, b: BBox) -> Tuple[float, float, float]:
     oy = overlap_1d(a.mn[1], a.mx[1], b.mn[1], b.mx[1])
     oz = overlap_1d(a.mn[2], a.mx[2], b.mn[2], b.mx[2])
     return ox, oy, oz
+
+
+def z_gap(a: BBox, b: BBox) -> float:
+    """Distance between Z-intervals if disjoint; 0 if overlapping."""
+    if a.mx[2] < b.mn[2]:
+        return b.mn[2] - a.mx[2]
+    if b.mx[2] < a.mn[2]:
+        return a.mn[2] - b.mx[2]
+    return 0.0
 
 
 # -----------------------------
@@ -184,12 +179,17 @@ def classify_axis_from_bbox(ifc_type: str, b: BBox) -> str:
 
 
 # -----------------------------
-# Candidate/contact filter (implements your point 6)
+# Candidate/contact filter (Point 6 + FIX for stacked walls)
 # -----------------------------
 def has_sufficient_contact(fe: ElementInfo, se: ElementInfo) -> bool:
     """
     Reject edge-only/point contacts.
     Accept only if there is sufficient overlap in the expected contact plane.
+
+    IMPORTANT FIX:
+    - Wall–Wall can contact in two ways:
+      (A) classic side contact: overlap in Z + overlap in X or Y
+      (B) stacked contact: big overlap in X&Y and small Z-gap (touching in Z)
     """
     if se.bbox.distance_to(fe.bbox) > CLOSE_TO:
         return False
@@ -206,17 +206,26 @@ def has_sufficient_contact(fe: ElementInfo, se: ElementInfo) -> bool:
         area_xy = ox * oy
         return (ox >= MIN_OVERLAP_LEN and oy >= MIN_OVERLAP_LEN and area_xy >= MIN_OVERLAP_AREA)
 
-    # Wall–Wall: require vertical overlap + one horizontal overlap
-    if se_is_wall and fe_is_wall:
-        if oz < MIN_OVERLAP_LEN:
-            return False
-        return (ox >= MIN_OVERLAP_LEN) or (oy >= MIN_OVERLAP_LEN)
-
     # Slab–Slab: require XY overlap
     if se_is_slab and fe_is_slab:
         area_xy = ox * oy
         return (ox >= MIN_OVERLAP_LEN and oy >= MIN_OVERLAP_LEN and area_xy >= MIN_OVERLAP_AREA)
 
+    # Wall–Wall:
+    if se_is_wall and fe_is_wall:
+        # (A) Side contact (vertical overlap): overlap in Z and at least one horiz overlap
+        if oz >= MIN_OVERLAP_LEN and ((ox >= MIN_OVERLAP_LEN) or (oy >= MIN_OVERLAP_LEN)):
+            return True
+
+        # (B) Stacked contact (touching in Z): big XY overlap + small Z gap
+        zg = z_gap(se.bbox, fe.bbox)
+        area_xy = ox * oy
+        if zg <= CLOSE_TO and ox >= MIN_OVERLAP_LEN and oy >= MIN_OVERLAP_LEN and area_xy >= MIN_OVERLAP_AREA:
+            return True
+
+        return False
+
+    # fallback
     return True
 
 
@@ -442,10 +451,12 @@ def cz_for_element_at_contact(elem: ElementInfo, p_on_elem: Vec3) -> str:
 
 
 def assign_dir_labels(elements: List[ElementInfo]) -> None:
+    # slabs
     for e in elements:
         if e.axis == "z":
             e.dir_label = "o"
 
+    # walls
     walls = [e for e in elements if e.axis in ("x", "y")]
     if not walls:
         return
@@ -472,7 +483,7 @@ def build_cz_matrix(elements: List[ElementInfo], se_id: int) -> Dict[int, Dict[i
             p = ei.bbox.clamp_point(ej.bbox.center())
             cz[i][j] = cz_for_element_at_contact(ei, p)
 
-    # neutral 0 for flanker-flanker separated by SE
+    # neutral 0 for flanker-flanker separated by SE (paper notation with ":")
     se = by_id[se_id]
     fl = [i for i in ids if i != se_id]
     for a, b in combinations(fl, 2):
@@ -486,7 +497,7 @@ def build_cz_matrix(elements: List[ElementInfo], se_id: int) -> Dict[int, Dict[i
 
 
 # -----------------------------
-# Junction type rules (subset – extend as needed)
+# Junction type rules
 # -----------------------------
 def mk_rule(jtype: str, dirs: List[str], cz_constraints: List[Tuple[int, int, str]]) -> Dict[str, Any]:
     return {"type": jtype, "k": len(dirs), "dirs": dirs, "cz": cz_constraints}
@@ -495,6 +506,7 @@ def mk_rule(jtype: str, dirs: List[str], cz_constraints: List[Tuple[int, int, st
 RULES: List[Dict[str, Any]] = [
     mk_rule("Lh1-2", ["n", "m"], [(1, 2, "short"), (2, 1, "border")]),
     mk_rule("Lv1-2", ["n", "o"], [(1, 2, "short"), (2, 1, "border")]),
+
     mk_rule("Tv2-13", ["n", "o"], [(1, 2, "short"), (2, 1, "middle")]),
     mk_rule("Th1-24", ["n", "m"], [(1, 2, "short"), (2, 1, "middle")]),
     mk_rule("Tv1-24", ["n", "o"], [(1, 2, "middle"), (2, 1, "short")]),
@@ -510,16 +522,19 @@ RULES: List[Dict[str, Any]] = [
         (1, 2, "0"), (2, 1, "0"),
     ]),
 
-    # Tv1-2:4 + alias Tv1-2-4
-    mk_rule("Tv1-2:4", ["n", "n", "o"], [
-        (3, 1, "short"), (3, 2, "short"),
-        (1, 3, "border"), (2, 3, "border"),
+    # FIXED: Tv1-2-4 / Tv1-2:4 (orientation + stacked-wall contact)
+    # - walls -> slab : short
+    # - slab -> walls : border
+    # - wall1 <-> wall2: short for "-"; 0 for ":"
+    mk_rule("Tv1-2-4", ["n", "n", "o"], [
+        (1, 3, "short"), (2, 3, "short"),
+        (3, 1, "border"), (3, 2, "border"),
         (1, 2, "short"), (2, 1, "short"),
     ]),
-    mk_rule("Tv1-2-4", ["n", "n", "o"], [
-        (3, 1, "short"), (3, 2, "short"),
-        (1, 3, "border"), (2, 3, "border"),
-        (1, 2, "short"), (2, 1, "short"),
+    mk_rule("Tv1-2:4", ["n", "n", "o"], [
+        (1, 3, "short"), (2, 3, "short"),
+        (3, 1, "border"), (3, 2, "border"),
+        (1, 2, "0"), (2, 1, "0"),
     ]),
 ]
 
@@ -629,7 +644,6 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         )
 
     se_ids = [i for i, inf in infos.items() if is_wall(inf.ifc_type) or is_slab(inf.ifc_type)]
-
     rows: List[Dict[str, Any]] = []
 
     for se_id in se_ids:
@@ -716,7 +730,6 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
 
     unique = list(best.values())
     unique = keep_only_maximal_junctions(unique)
-
     unique.sort(key=lambda x: (x["junction_type"], x["element_ids"]))
     return unique, rows
 
