@@ -794,7 +794,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
                 "debug": dbg,
             })
 
-    # dedupe by element set; keep best (non-UNKNOWN preferred)
+       # 1) first: keep best per EXACT same element set (like before)
     def score(t: str) -> int:
         return 2 if t not in ("UNKNOWN", "NONE") else 1 if t == "UNKNOWN" else 0
 
@@ -805,13 +805,61 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
             best[key] = r
 
     unique = list(best.values())
-    unique.sort(key=lambda x: (x["junction_type"], x["element_ids"]))
 
+    # 2) then: remove subset junctions if a larger superset exists
+    unique = keep_only_maximal_junctions(unique)
+
+    unique.sort(key=lambda x: (x["junction_type"], x["element_ids"]))
     return unique, rows
 
+def junction_score(j: Dict[str, Any]) -> Tuple[int, int]:
+    """
+    Higher is better.
+    Priority:
+      1) recognized types over UNKNOWN
+      2) larger junctions (more elements)
+    """
+    jt = j.get("junction_type", "UNKNOWN")
+    recognized = 1 if jt not in ("UNKNOWN", "NONE") else 0
+    size = len(j.get("element_ids", []))
+    return (recognized, size)
+
+
+def keep_only_maximal_junctions(junctions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Remove junctions whose element set is a proper subset of another junction element set.
+    Keep maximal (largest) junctions.
+
+    Example:
+      {56,142} and {56,190} are removed if {56,142,190} exists.
+    """
+    # normalize to frozensets for fast subset checks
+    sets = [(frozenset(j["element_ids"]), j) for j in junctions]
+
+    # Sort by:
+    # - score descending
+    # - size descending
+    sets.sort(key=lambda x: (junction_score(x[1])[0], junction_score(x[1])[1]), reverse=True)
+
+    kept: List[Tuple[frozenset, Dict[str, Any]]] = []
+
+    for s, j in sets:
+        # if s is subset of any already kept superset -> drop it
+        is_subset = False
+        for ks, kj in kept:
+            if s < ks:  # proper subset
+                is_subset = True
+                break
+        if not is_subset:
+            kept.append((s, j))
+
+    out = [j for _, j in kept]
+    # stable sort for nice output
+    out.sort(key=lambda r: (r["junction_type"], r["element_ids"]))
+    return out
 
 def main():
-    ifc_path = "./ifc-models/model_Tv1-2-4_gap.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/model_Tv2-1-4.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
