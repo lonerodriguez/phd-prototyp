@@ -757,6 +757,12 @@ RULES: List[Dict[str, Any]] = [
         (3, 1, "border"), (3, 2, "short"),
     ]),
 
+    mk_rule("Th1-2-4", ["n", "n", "m"], [
+        (1, 2, "short"), (2, 1, "short"),
+        (1, 3, "short"), (2, 3, "short"),
+        (3, 1, "border"), (3, 2, "border"),
+    ]),
+
     
 ]
 
@@ -959,7 +965,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
 
 
 def main():
-    ifc_path = "./ifc-models/Th1-2-4.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/Xh1-24-3.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
