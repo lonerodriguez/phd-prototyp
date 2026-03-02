@@ -208,6 +208,19 @@ def classify_local_axes(ifc_type: str, b: BBox) -> Tuple[str, Optional[str], Opt
     return thin_axis, long_axis, thin_axis, thin_axis
 
 
+def wall_length_axis(w: ElementInfo) -> str:
+    # w.axis ist Dickenrichtung ("x" oder "y")
+    # Länge ist die andere horizontale Achse
+    return "y" if w.axis == "x" else "x"
+
+
+def is_near_wall_end(w: ElementInfo, p_on_w: Vec3) -> bool:
+    la = wall_length_axis(w)
+    v = p_on_w[0] if la == "x" else p_on_w[1]
+    mn = w.bbox.mn[0] if la == "x" else w.bbox.mn[1]
+    mx = w.bbox.mx[0] if la == "x" else w.bbox.mx[1]
+    tol = OFF_05 + EDGE_GAP_TOL + 1e-9
+    return (v - mn) <= tol or (mx - v) <= tol
 # -----------------------------
 # Candidate/contact filter
 # -----------------------------
@@ -624,6 +637,10 @@ def cz_for_pair(ei: ElementInfo, ej: ElementInfo, ej_jb_if_ei_is_se: Optional[in
     if face_axis in small_axes:
         return "short"
 
+    # --- FIX: Wall–Wall Border/Middle über Wand-Ende statt JB ---
+    if is_wall(ei.ifc_type) and is_wall(ej.ifc_type):
+        return "border" if is_near_wall_end(ei, p) else "middle"
+
     jb_border = border_by_jb_paper(ei, ej.axis, ej_jb_if_ei_is_se)
     if jb_border is not None:
         return "border" if jb_border else "middle"
@@ -912,7 +929,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
 
 
 def main():
-    ifc_path = "./ifc-models/Th2-1-4.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/Xh1-24-3.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
