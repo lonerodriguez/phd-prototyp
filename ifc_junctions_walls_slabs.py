@@ -389,6 +389,19 @@ def dd_axis_and_sign(dd: str) -> Tuple[str, str]:
         return "y", "plus" if dd.endswith("plus") else "minus"
     return "z", "plus" if dd.endswith("plus") else "minus"
 
+def closest_point_on_a_to_b(a: BBox, b: BBox) -> Vec3:
+    def pick(ai0, ai1, bi0, bi1, bcenter):
+        if bi0 > ai1:
+            return ai1
+        if bi1 < ai0:
+            return ai0
+        return min(max(bcenter, ai0), ai1)
+
+    bc = b.center()
+    x = pick(a.mn[0], a.mx[0], b.mn[0], b.mx[0], bc[0])
+    y = pick(a.mn[1], a.mx[1], b.mn[1], b.mx[1], bc[1])
+    z = pick(a.mn[2], a.mx[2], b.mn[2], b.mx[2], bc[2])
+    return (x, y, z)
 
 def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
     """
@@ -397,7 +410,7 @@ def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
       - if se is Wall and fe is Slab -> prefer Z faces (Lv1-2 fix)
       - if se is Slab and fe is Wall -> prefer Z only if strong XY overlap, else prefer X/Y (Tv1-24 vs Tv2-13)
     """
-    p = se.bbox.clamp_point(fe.bbox.center())
+    p = closest_point_on_a_to_b(se.bbox, fe.bbox)
     smn, smx = se.bbox.mn, se.bbox.mx
 
     face_dists = [
@@ -559,7 +572,7 @@ def smallest_face_axes(b: BBox) -> Set[str]:
 def point_on_dd_face(ei: ElementInfo, ej: ElementInfo) -> Tuple[Vec3, str]:
     bi = ei.bbox
     dd = compute_dd(ej, ei)
-    base = bi.clamp_point(ej.bbox.center())
+    base = closest_point_on_a_to_b(bi, ej.bbox)
     x, y, z = base
 
     if dd == "Xminus":
@@ -576,6 +589,7 @@ def point_on_dd_face(ei: ElementInfo, ej: ElementInfo) -> Tuple[Vec3, str]:
         z = bi.mx[2]; face_axis = "z"
 
     return (x, y, z), face_axis
+
 
 
 def border_strip_by_distance(elem: ElementInfo, p_on_elem: Vec3, large_face_axis: str) -> bool:
@@ -633,13 +647,20 @@ def border_by_jb_paper(se: ElementInfo, fe_axis: str, fe_jb: Optional[int]) -> O
 def cz_for_pair(ei: ElementInfo, ej: ElementInfo, ej_jb_if_ei_is_se: Optional[int]) -> str:
     p, face_axis = point_on_dd_face(ei, ej)
 
+    # --- Wall–Wall Sonderlogik: SHORT nur an Stirnfläche (Wandende) ---
+    if is_wall(ei.ifc_type) and is_wall(ej.ifc_type):
+        la = wall_length_axis(ei)  # "x" oder "y" (Längsachse der Wand)
+        # Stirnfläche: Normalenachse der Kontaktfläche == Längsachse
+        # (Endface hat Normalenrichtung entlang der Länge)
+        if face_axis == la:
+            return "short"
+        # Seiten/Längsfläche: niemals short -> border/middle über Randstreifen
+        return "border" if border_strip_by_distance(ei, p, face_axis) else "middle"
+
+    # --- Default: short wenn kleine Fläche (z.B. Stirnfläche bei Slabs etc.) ---
     small_axes = smallest_face_axes(ei.bbox)
     if face_axis in small_axes:
         return "short"
-
-    # --- FIX: Wall–Wall Border/Middle über Wand-Ende statt JB ---
-    if is_wall(ei.ifc_type) and is_wall(ej.ifc_type):
-        return "border" if is_near_wall_end(ei, p) else "middle"
 
     jb_border = border_by_jb_paper(ei, ej.axis, ej_jb_if_ei_is_se)
     if jb_border is not None:
@@ -728,6 +749,15 @@ RULES: List[Dict[str, Any]] = [
         (2, 1, "border"), (3, 1, "border"),
         (2, 3, "0"), (3, 2, "0"),
     ]),
+
+        # Th1-2-4 (Wall split + perpendicular wall)
+    mk_rule("Th1-2-4", ["n", "m", "n"], [
+        (1, 2, "short"), (1, 3, "short"),
+        (2, 1, "border"), (2, 3, "short"),
+        (3, 1, "border"), (3, 2, "short"),
+    ]),
+
+    
 ]
 
 
@@ -929,7 +959,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
 
 
 def main():
-    ifc_path = "./ifc-models/Xh1-24-3.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/Th1-2-4.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
