@@ -1,12 +1,12 @@
 [
   {
-    "junction_scope": "JB6",
-    "junction_box": 6,
+    "junction_scope": "COMBINED",
+    "junction_box": null,
     "element_ids": [
-      142,
-      190
+      56,
+      142
     ],
-    "junction_type": "UNKNOWN",
+    "junction_type": "Tv1-24",
     "elements": [
       {
         "ifc_id": 142,
@@ -17,34 +17,34 @@
         "dir": "n",
         "bbox": {
           "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            0.2
+            -1.512057685452594,
+            0.6315960709682165,
+            -0.5
           ],
           "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            1.2000000000000002
+            0.48794231454740644,
+            1.1830960709682163,
+            3.500000000000001
           ]
         }
       },
       {
-        "ifc_id": 190,
-        "guid": "0OyKBZP417revh_YJGMIOI",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "axis": "x",
-        "dir": "n",
+        "ifc_id": 56,
+        "guid": "2m9OIsdJX4kvGznFAGvJDb",
+        "type": "IfcSlab",
+        "name": "Floor:DeckenInstanz:316140",
+        "axis": "z",
+        "dir": "o",
         "bbox": {
           "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            1.2
+            -1.512057685452595,
+            -0.9199039290317836,
+            1.0000000000000002
           ],
           "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            2.2
+            0.48794231454740555,
+            0.6315960709682165,
+            1.4019000000000001
           ]
         }
       }
@@ -53,112 +53,52 @@
       "k": 2,
       "dirs": {
         "142": "n",
-        "190": "n"
+        "56": "o"
       },
       "cz_pairs": {
         "142": {
-          "190": "short"
+          "56": "middle"
         },
-        "190": {
+        "56": {
           "142": "short"
         }
       },
-      "se_id": 142
+      "se_id": 142,
+      "fe_to_jb": {
+        "56": null
+      },
+      "matched_rule_perm": {
+        "1": 142,
+        "2": 56
+      }
     }
   },
   {
     "junction_scope": "COMBINED",
     "junction_box": null,
     "element_ids": [
-      142,
-      190
+      56,
+      142
     ],
     "junction_type": "UNKNOWN",
     "elements": [
       {
-        "ifc_id": 142,
-        "guid": "1IoXKV3UD9EAy5OOpLu4JJ",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "axis": "x",
-        "dir": "n",
+        "ifc_id": 56,
+        "guid": "2m9OIsdJX4kvGznFAGvJDb",
+        "type": "IfcSlab",
+        "name": "Floor:DeckenInstanz:316140",
+        "axis": "z",
+        "dir": "o",
         "bbox": {
           "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            0.2
+            -1.512057685452595,
+            -0.9199039290317836,
+            1.0000000000000002
           ],
           "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            1.2000000000000002
-          ]
-        }
-      },
-      {
-        "ifc_id": 190,
-        "guid": "0OyKBZP417revh_YJGMIOI",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "axis": "x",
-        "dir": "n",
-        "bbox": {
-          "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            1.2
-          ],
-          "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            2.2
-          ]
-        }
-      }
-    ],
-    "debug": {
-      "k": 2,
-      "dirs": {
-        "142": "n",
-        "190": "n"
-      },
-      "cz_pairs": {
-        "142": {
-          "190": "short"
-        },
-        "190": {
-          "142": "short"
-        }
-      },
-      "se_id": 142
-    }
-  },
-  {
-    "junction_scope": "JB4",
-    "junction_box": 4,
-    "element_ids": [
-      142,
-      190
-    ],
-    "junction_type": "UNKNOWN",
-    "elements": [
-      {
-        "ifc_id": 190,
-        "guid": "0OyKBZP417revh_YJGMIOI",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "axis": "x",
-        "dir": "n",
-        "bbox": {
-          "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            1.2
-          ],
-          "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            2.2
+            0.48794231454740555,
+            0.6315960709682165,
+            1.4019000000000001
           ]
         }
       },
@@ -171,14 +111,14 @@
         "dir": "n",
         "bbox": {
           "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            0.2
+            -1.512057685452594,
+            0.6315960709682165,
+            -0.5
           ],
           "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            1.2000000000000002
+            0.48794231454740644,
+            1.1830960709682163,
+            3.500000000000001
           ]
         }
       }
@@ -186,85 +126,21 @@
     "debug": {
       "k": 2,
       "dirs": {
-        "190": "n",
+        "56": "o",
         "142": "n"
       },
       "cz_pairs": {
-        "190": {
-          "142": "short"
+        "56": {
+          "142": "middle"
         },
         "142": {
-          "190": "short"
+          "56": "middle"
         }
       },
-      "se_id": 190
-    }
-  },
-  {
-    "junction_scope": "COMBINED",
-    "junction_box": null,
-    "element_ids": [
-      142,
-      190
-    ],
-    "junction_type": "UNKNOWN",
-    "elements": [
-      {
-        "ifc_id": 190,
-        "guid": "0OyKBZP417revh_YJGMIOI",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "axis": "x",
-        "dir": "n",
-        "bbox": {
-          "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            1.2
-          ],
-          "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            2.2
-          ]
-        }
-      },
-      {
-        "ifc_id": 142,
-        "guid": "1IoXKV3UD9EAy5OOpLu4JJ",
-        "type": "IfcWallStandardCase",
-        "name": "WandInstanz",
-        "axis": "x",
-        "dir": "n",
-        "bbox": {
-          "mn": [
-            -1.0120576854525938,
-            1.1830960709682192,
-            0.2
-          ],
-          "mx": [
-            -0.012057685452593581,
-            1.7345960709682193,
-            1.2000000000000002
-          ]
-        }
+      "se_id": 56,
+      "fe_to_jb": {
+        "142": null
       }
-    ],
-    "debug": {
-      "k": 2,
-      "dirs": {
-        "190": "n",
-        "142": "n"
-      },
-      "cz_pairs": {
-        "190": {
-          "142": "short"
-        },
-        "142": {
-          "190": "short"
-        }
-      },
-      "se_id": 190
     }
   }
 ]
