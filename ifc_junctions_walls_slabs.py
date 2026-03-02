@@ -380,7 +380,9 @@ def dd_axis_and_sign(dd: str) -> Tuple[str, str]:
 def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
     """
     Robust DD: nearest face on SE to FE.
-    FIX: Tie-break. For Wall–Slab prefer Z faces (top/bottom) if equal distance.
+    FIX: Tie-break:
+      - if se is Wall and fe is Slab -> prefer Z faces (Lv1-2 fix)
+      - if se is Slab and fe is Wall -> prefer Z only if strong XY overlap, else prefer X/Y (Tv1-24 vs Tv2-13)
     """
     p = se.bbox.clamp_point(fe.bbox.center())
     smn, smx = se.bbox.mn, se.bbox.mx
@@ -399,9 +401,25 @@ def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
     if len(candidates) == 1:
         return candidates[0]
 
-    wall_slab = (is_wall(se.ifc_type) and is_slab(fe.ifc_type)) or (is_slab(se.ifc_type) and is_wall(fe.ifc_type))
-    pref = ["Zplus", "Zminus", "Yplus", "Yminus", "Xplus", "Xminus"] if wall_slab else \
-           ["Xplus", "Xminus", "Yplus", "Yminus", "Zplus", "Zminus"]
+    # --- tie-break priorities ---
+    if is_wall(se.ifc_type) and is_slab(fe.ifc_type):
+        # original fix for Lv1-2
+        pref = ["Zplus", "Zminus", "Yplus", "Yminus", "Xplus", "Xminus"]
+
+    elif is_slab(se.ifc_type) and is_wall(fe.ifc_type):
+        # decide by overlap pattern (Tv1-24 vs Tv2-13)
+        ox, oy, _ = overlap_lengths(se.bbox, fe.bbox)
+        strong_xy = (ox >= MIN_OVERLAP_LEN and oy >= MIN_OVERLAP_LEN)
+
+        if strong_xy:
+            # wall overlaps slab in plan -> treat as top/bottom contact
+            pref = ["Zplus", "Zminus", "Yplus", "Yminus", "Xplus", "Xminus"]
+        else:
+            # edge contact -> use slab side face (stirnfläche)
+            pref = ["Yplus", "Yminus", "Xplus", "Xminus", "Zplus", "Zminus"]
+
+    else:
+        pref = ["Xplus", "Xminus", "Yplus", "Yminus", "Zplus", "Zminus"]
 
     for k in pref:
         if k in candidates:
@@ -686,6 +704,13 @@ RULES: List[Dict[str, Any]] = [
         (2, 1, "short"),  (3, 1, "short"),
         (2, 3, "0"),      (3, 2, "0"),
     ]),
+
+    # Tv2-1-3 (Wall + 2 slabs)
+    mk_rule("Tv2-1-3", ["n", "o", "o"], [
+        (1, 2, "short"), (1, 3, "short"),
+        (2, 1, "border"), (3, 1, "border"),
+        (2, 3, "0"), (3, 2, "0"),
+    ]),
 ]
 
 
@@ -887,7 +912,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
 
 
 def main():
-    ifc_path = "./ifc-models/Xh1-24-3.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/Th2-1-4.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
