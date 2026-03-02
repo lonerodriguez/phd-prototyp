@@ -2,12 +2,18 @@
 # -*- coding: utf-8 -*-
 
 """
-Paper-konforme Stoßstellenanalyse (Hellwig Diss-Auszug) – stabilisiert (Fixes)
+Paper-konforme Stoßstellenanalyse (Hellwig Diss-Auszug) – XY-rotationsinvariant
 
-Fixes:
-- Kontaktpunkt auf SE-Face: clamp(FE.center) statt overlap-mid (fix für Lh1-2 vs Th1-24)
-- compute_dd Tie-Breaking: bei Wall–Slab Z-Faces priorisieren (fix für Lv1-2)
-- Regel Xh1-24-3 bleibt enthalten
+Ziel:
+- Egal ob IFC im XY um 90° gedreht ist (x/y vertauscht): gleiche Junction-Ergebnisse.
+- Keine semantische Abhängigkeit von global X/Y, sondern lokale Achsen pro Element:
+  - Wall: long_axis (Länge), thin_axis (Dicke/Normal)
+  - Slab: axis=z, plus long_axis/short_axis in XY
+
+Beibehaltende Fixes:
+- clamp(FE.center) Kontaktpunkt auf SE-Face
+- compute_dd Tie-Breaking: bei Wall–Slab Z-Faces priorisieren
+- Regel Xh1-24-3 enthalten
 """
 
 from __future__ import annotations
@@ -34,7 +40,6 @@ CLOSE_TO = 0.30
 MIN_OVERLAP_LEN = 0.05
 MIN_OVERLAP_AREA = 0.01
 
-EPS_FACE = 1e-6
 EDGE_GAP_TOL = 0.02
 DD_TIE_EPS = 1e-9
 
@@ -112,7 +117,22 @@ class ElementInfo:
     ifc_type: str
     name: str
     bbox: BBox
+
+    # paper-axis:
+    # - wall: thin_axis (Normal/Dicke)
+    # - slab: "z"
     axis: str
+
+    # local horizontal axes (rotation invariant):
+    # - wall: long_axis (length dir), thin_axis (normal/thickness dir)
+    # - slab: long_axis (bigger XY), short_axis (smaller XY)
+    long_axis: Optional[str] = None
+    short_axis: Optional[str] = None
+
+    # for wall convenience
+    thin_axis: Optional[str] = None
+
+    # dir-labels: n/m/o
     dir_label: str = ""
 
 
@@ -167,14 +187,25 @@ def collect_walls_slabs(model) -> List:
     return out
 
 
-def classify_axis_from_bbox(ifc_type: str, b: BBox) -> str:
+def classify_local_axes(ifc_type: str, b: BBox) -> Tuple[str, Optional[str], Optional[str], Optional[str]]:
     """
-    Für Wände: axis = "Normalen-/Dickenrichtung" (kleinere horizontale Ausdehnung)
+    Rotation-invariant in XY:
+    - wall: long_axis = max(sx,sy), thin_axis = min(sx,sy), axis(thin) = thin_axis
+    - slab: axis = 'z', long_axis/short_axis in XY
+    Returns: (axis, long_axis, short_axis, thin_axis)
     """
     sx, sy, _ = b.size()
+
     if is_slab(ifc_type):
-        return "z"
-    return "x" if sx <= sy else "y"
+        long_axis = "x" if sx >= sy else "y"
+        short_axis = "y" if long_axis == "x" else "x"
+        return "z", long_axis, short_axis, None
+
+    # wall
+    long_axis = "x" if sx >= sy else "y"
+    thin_axis = "y" if long_axis == "x" else "x"
+    # keep short_axis same as thin_axis for walls if you want
+    return thin_axis, long_axis, thin_axis, thin_axis
 
 
 # -----------------------------
@@ -226,7 +257,7 @@ def has_sufficient_contact(fe: ElementInfo, se: ElementInfo) -> bool:
 
 
 # -----------------------------
-# Junction Boxes (JB1..JB6)
+# Junction Boxes (JB1..JB6) – rotationsinvariant in XY
 # -----------------------------
 def build_junction_boxes(se: ElementInfo) -> Dict[int, JB]:
     mnx, mny, mnz = se.bbox.mn
@@ -235,44 +266,117 @@ def build_junction_boxes(se: ElementInfo) -> Dict[int, JB]:
     def mk(jb_id: int, mn: Vec3, mx: Vec3) -> JB:
         return JB(jb_id=jb_id, bbox=BBox(mn, mx), se_id=se.ifc_id, fe_ids=[])
 
-    axis = se.axis
     jbs: Dict[int, JB] = {}
 
-    if axis == "x":
-        jbs[1] = mk(1, (mnx - OFF_03, mny - OFF_05, mnz), (mxx + OFF_03, mny + OFF_05, mxz))
-        jbs[2] = mk(2, (mnx - OFF_03, mny + OFF_05, mnz), (mxx + OFF_03, mxy - OFF_05, mxz))
-        jbs[3] = mk(3, (mnx - OFF_03, mxy - OFF_05, mnz), (mxx + OFF_03, mxy + OFF_05, mxz))
+    # ---- slab: split by local long/short (not hard x/y)
+    if is_slab(se.ifc_type):
+        la = se.long_axis or "x"
+        sa = se.short_axis or ("y" if la == "x" else "x")
 
-        jbs[4] = mk(4, (mnx - OFF_03, mny - OFF_05, mnz - OFF_03), (mxx + OFF_03, mxy + OFF_05, mnz + OFF_03))
-        jbs[5] = mk(5, (mnx - OFF_03, mny - OFF_05, mnz + OFF_03), (mxx + OFF_03, mxy + OFF_05, mxz - OFF_03))
-        jbs[6] = mk(6, (mnx - OFF_03, mny - OFF_05, mxz - OFF_03), (mxx + OFF_03, mxy + OFF_05, mxz + OFF_03))
+        def get_min(ax: str) -> float:
+            return mnx if ax == "x" else mny
 
-    elif axis == "y":
-        jbs[1] = mk(1, (mnx - OFF_05, mny - OFF_03, mnz), (mnx + OFF_05, mxy + OFF_03, mxz))
-        jbs[2] = mk(2, (mnx + OFF_05, mny - OFF_03, mnz), (mxx - OFF_05, mxy + OFF_03, mxz))
-        jbs[3] = mk(3, (mxx - OFF_05, mny - OFF_03, mnz), (mxx + OFF_05, mxy + OFF_03, mxz))
+        def get_max(ax: str) -> float:
+            return mxx if ax == "x" else mxy
 
-        jbs[4] = mk(4, (mnx - OFF_05, mny - OFF_03, mnz - OFF_03), (mxx + OFF_05, mxy + OFF_03, mnz + OFF_03))
-        jbs[5] = mk(5, (mnx - OFF_05, mny - OFF_03, mnz + OFF_03), (mxx + OFF_05, mxy + OFF_03, mxz - OFF_03))
-        jbs[6] = mk(6, (mnx - OFF_05, mny - OFF_03, mxz - OFF_03), (mxx + OFF_05, mxy + OFF_03, mxz + OFF_03))
+        # JB1/2/3 along long-axis
+        # JB4/5/6 along short-axis
+        # z expanded by OFF_03 like before
+        la_min, la_max = get_min(la), get_max(la)
+        sa_min, sa_max = get_min(sa), get_max(sa)
 
-    elif axis == "z":
-        jbs[1] = mk(1, (mnx, mny - OFF_05, mnz - OFF_03), (mxx, mny + OFF_05, mxz + OFF_03))
-        jbs[2] = mk(2, (mnx, mny + OFF_05, mnz - OFF_03), (mxx, mxy - OFF_05, mxz + OFF_03))
-        jbs[3] = mk(3, (mnx, mxy - OFF_05, mnz - OFF_03), (mxx, mxy + OFF_05, mxz + OFF_03))
+        # helper to build bbox with axis-aligned coords
+        def slab_box(la_rng: Tuple[float, float], sa_rng: Tuple[float, float]) -> Tuple[Vec3, Vec3]:
+            # map ranges into x/y
+            if la == "x":
+                x0, x1 = la_rng
+                y0, y1 = sa_rng
+            else:
+                y0, y1 = la_rng
+                x0, x1 = sa_rng
+            return (x0, y0, mnz - OFF_03), (x1, y1, mxz + OFF_03)
 
-        jbs[4] = mk(4, (mnx - OFF_05, mny - OFF_05, mnz - OFF_03), (mnx + OFF_05, mxy + OFF_05, mxz + OFF_03))
-        jbs[5] = mk(5, (mnx + OFF_05, mny - OFF_05, mnz - OFF_03), (mxx - OFF_05, mxy + OFF_05, mxz + OFF_03))
-        jbs[6] = mk(6, (mxx - OFF_05, mny - OFF_05, mnz - OFF_03), (mxx + OFF_05, mxy + OFF_05, mxz + OFF_03))
-    else:
-        raise ValueError(f"Unknown axis: {axis}")
+        # Along long-axis strips (JB1..3): short-axis full, long-axis banded
+        jb1_la = (la_min - OFF_05, la_min + OFF_05)
+        jb2_la = (la_min + OFF_05, la_max - OFF_05)
+        jb3_la = (la_max - OFF_05, la_max + OFF_05)
+        full_sa = (sa_min - OFF_05, sa_max + OFF_05)
+
+        mn, mx = slab_box(jb1_la, full_sa); jbs[1] = mk(1, mn, mx)
+        mn, mx = slab_box(jb2_la, full_sa); jbs[2] = mk(2, mn, mx)
+        mn, mx = slab_box(jb3_la, full_sa); jbs[3] = mk(3, mn, mx)
+
+        # Along short-axis strips (JB4..6): long-axis full, short-axis banded
+        jb4_sa = (sa_min - OFF_05, sa_min + OFF_05)
+        jb5_sa = (sa_min + OFF_05, sa_max - OFF_05)
+        jb6_sa = (sa_max - OFF_05, sa_max + OFF_05)
+        full_la = (la_min - OFF_05, la_max + OFF_05)
+
+        mn, mx = slab_box(full_la, jb4_sa); jbs[4] = mk(4, mn, mx)
+        mn, mx = slab_box(full_la, jb5_sa); jbs[5] = mk(5, mn, mx)
+        mn, mx = slab_box(full_la, jb6_sa); jbs[6] = mk(6, mn, mx)
+
+        return jbs
+
+    # ---- wall: use thin_axis + long_axis (rotation invariant)
+    ta = se.thin_axis or se.axis          # thickness/normal axis in XY
+    la = se.long_axis or ("y" if ta == "x" else "x")  # length axis in XY
+
+    def get_min(ax: str) -> float:
+        return mnx if ax == "x" else mny
+
+    def get_max(ax: str) -> float:
+        return mxx if ax == "x" else mxy
+
+    ta_min, ta_max = get_min(ta), get_max(ta)
+    la_min, la_max = get_min(la), get_max(la)
+
+    # helper: create a wall JB by giving ranges in ta & la
+    def wall_box(ta_rng: Tuple[float, float], la_rng: Tuple[float, float], z_rng: Tuple[float, float]) -> Tuple[Vec3, Vec3]:
+        if ta == "x":
+            x0, x1 = ta_rng
+            y0, y1 = la_rng
+        else:
+            y0, y1 = ta_rng
+            x0, x1 = la_rng
+        z0, z1 = z_rng
+        return (x0, y0, z0), (x1, y1, z1)
+
+    # JB1/2/3: split along wall length axis (la)
+    ta_rng_small = (ta_min - OFF_03, ta_max + OFF_03)
+    jb1_la = (la_min - OFF_05, la_min + OFF_05)
+    jb2_la = (la_min + OFF_05, la_max - OFF_05)
+    jb3_la = (la_max - OFF_05, la_max + OFF_05)
+
+    mn, mx = wall_box(ta_rng_small, jb1_la, (mnz, mxz)); jbs[1] = mk(1, mn, mx)
+    mn, mx = wall_box(ta_rng_small, jb2_la, (mnz, mxz)); jbs[2] = mk(2, mn, mx)
+    mn, mx = wall_box(ta_rng_small, jb3_la, (mnz, mxz)); jbs[3] = mk(3, mn, mx)
+
+    # JB4/5/6: split along Z, cover full length (la) with OFF_05, thickness with OFF_03
+    la_rng_full = (la_min - OFF_05, la_max + OFF_05)
+    jb4_z = (mnz - OFF_03, mnz + OFF_03)
+    jb5_z = (mnz + OFF_03, mxz - OFF_03)
+    jb6_z = (mxz - OFF_03, mxz + OFF_03)
+
+    mn, mx = wall_box(ta_rng_small, la_rng_full, jb4_z); jbs[4] = mk(4, mn, mx)
+    mn, mx = wall_box(ta_rng_small, la_rng_full, jb5_z); jbs[5] = mk(5, mn, mx)
+    mn, mx = wall_box(ta_rng_small, la_rng_full, jb6_z); jbs[6] = mk(6, mn, mx)
 
     return jbs
 
 
 # -----------------------------
-# DD + FE->JB assignment (FIX: tie-breaking)
+# DD + FE->JB assignment (tie-breaking stays)
 # -----------------------------
+def dd_axis_and_sign(dd: str) -> Tuple[str, str]:
+    # returns ("x"|"y"|"z", "plus"|"minus")
+    if dd.startswith("X"):
+        return "x", "plus" if dd.endswith("plus") else "minus"
+    if dd.startswith("Y"):
+        return "y", "plus" if dd.endswith("plus") else "minus"
+    return "z", "plus" if dd.endswith("plus") else "minus"
+
+
 def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
     """
     Robust DD: nearest face on SE to FE.
@@ -295,12 +399,9 @@ def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
     if len(candidates) == 1:
         return candidates[0]
 
-    # tie-break priorities
     wall_slab = (is_wall(se.ifc_type) and is_slab(fe.ifc_type)) or (is_slab(se.ifc_type) and is_wall(fe.ifc_type))
-    if wall_slab:
-        pref = ["Zplus", "Zminus", "Yplus", "Yminus", "Xplus", "Xminus"]
-    else:
-        pref = ["Xplus", "Xminus", "Yplus", "Yminus", "Zplus", "Zminus"]
+    pref = ["Zplus", "Zminus", "Yplus", "Yminus", "Xplus", "Xminus"] if wall_slab else \
+           ["Xplus", "Xminus", "Yplus", "Yminus", "Zplus", "Zminus"]
 
     for k in pref:
         if k in candidates:
@@ -310,9 +411,13 @@ def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
 
 
 def assign_fe_to_jb(fe: ElementInfo, se: ElementInfo, jbs: Dict[int, JB]) -> Optional[int]:
-    fe_n = fe.axis
-    se_n = se.axis
+    """
+    Rotation invariant:
+    - For walls, interpret se.thin_axis (ta) and se.long_axis (la)
+    - Map dd to axis+sign and apply the original intent without hardcoding x/y cases
+    """
     dd = compute_dd(fe, se)
+    dd_ax, dd_sign = dd_axis_and_sign(dd)
 
     FE = fe.bbox
     JB1 = jbs[1].bbox
@@ -320,89 +425,94 @@ def assign_fe_to_jb(fe: ElementInfo, se: ElementInfo, jbs: Dict[int, JB]) -> Opt
     JB4 = jbs[4].bbox
     JB6 = jbs[6].bbox
 
-    def err():
+    # slab SE: keep logic but now JBs already built rotation invariant -> we can use dd axis directly
+    if is_slab(se.ifc_type):
+        # For slab, use: dd in x/y -> which side strip; dd in z -> decide by FE position in-plane.
+        if dd_ax == "x":
+            return 6 if dd_sign == "plus" else 4
+        if dd_ax == "y":
+            return 3 if dd_sign == "plus" else 1
+        # dd_ax == "z": pick based on FE position along slab-long axis
+        # choose JB3/JB1/JB2 by where FE lies relative to JB bands
+        # We use the slab's long_axis and compare that coordinate.
+        la = se.long_axis or "x"
+
+        def fe_min(ax: str) -> float:
+            return FE.mn[0] if ax == "x" else FE.mn[1]
+
+        def fe_max(ax: str) -> float:
+            return FE.mx[0] if ax == "x" else FE.mx[1]
+
+        def jb_min(b: BBox, ax: str) -> float:
+            return b.mn[0] if ax == "x" else b.mn[1]
+
+        def jb_max(b: BBox, ax: str) -> float:
+            return b.mx[0] if ax == "x" else b.mx[1]
+
+        if fe_min(la) >= jb_min(JB3, la):
+            return 3
+        if fe_max(la) <= jb_max(JB1, la):
+            return 1
+        return 2
+
+    # wall SE:
+    ta = se.thin_axis or se.axis
+    la = se.long_axis or ("y" if ta == "x" else "x")
+
+    fe_n = fe.axis  # wall: thin_axis, slab: z
+
+    def fe_min(ax: str) -> float:
+        return FE.mn[0] if ax == "x" else FE.mn[1] if ax == "y" else FE.mn[2]
+
+    def fe_max(ax: str) -> float:
+        return FE.mx[0] if ax == "x" else FE.mx[1] if ax == "y" else FE.mx[2]
+
+    def jb_min(b: BBox, ax: str) -> float:
+        return b.mn[0] if ax == "x" else b.mn[1] if ax == "y" else b.mn[2]
+
+    def jb_max(b: BBox, ax: str) -> float:
+        return b.mx[0] if ax == "x" else b.mx[1] if ax == "y" else b.mx[2]
+
+    # Case 1: FE is slab (fe_n == 'z') contacting wall
+    if fe_n == "z":
+        if dd_ax == ta:
+            # choose JB6/JB4/JB5 by FE z position
+            if fe_min("z") >= jb_min(JB6, "z"):
+                return 6
+            if fe_max("z") <= jb_max(JB4, "z"):
+                return 4
+            return 5
+        if dd_ax == "z":
+            return 6 if dd_sign == "plus" else 4
+        # otherwise undefined
         return None
 
-    if se_n == "x":
-        if fe_n == "x":
-            if dd == "Yplus": return 3
-            if dd == "Yminus": return 1
-            if dd == "Zplus": return 6
-            if dd == "Zminus": return 4
-            return err()
-        elif fe_n == "y":
-            if dd in ("Xplus", "Xminus"):
-                if FE.mn[1] >= JB3.mn[1]: return 3
-                if FE.mx[1] <= JB1.mx[1]: return 1
-                return 2
-            if dd == "Yplus": return 3
-            if dd == "Yminus": return 1
-            return err()
-        elif fe_n == "z":
-            if dd in ("Xplus", "Xminus"):
-                if FE.mn[2] >= JB6.mn[2]: return 6
-                if FE.mx[2] <= JB4.mx[2]: return 4
-                return 5
-            if dd == "Zplus": return 6
-            if dd == "Zminus": return 4
-            return err()
-        return err()
+    # Case 2: FE wall parallel to SE wall (same thin axis)
+    if fe_n == ta:
+        if dd_ax == la:
+            return 3 if dd_sign == "plus" else 1
+        if dd_ax == "z":
+            return 6 if dd_sign == "plus" else 4
+        return None
 
-    if se_n == "y":
-        if fe_n == "x":
-            if dd in ("Yplus", "Yminus"):
-                if FE.mn[0] >= JB3.mn[0]: return 3
-                if FE.mx[0] <= JB1.mx[0]: return 1
-                return 2
-            if dd == "Xplus": return 3
-            if dd == "Xminus": return 1
-            return err()
-        elif fe_n == "y":
-            if dd == "Xplus": return 3
-            if dd == "Xminus": return 1
-            if dd == "Zplus": return 6
-            if dd == "Zminus": return 4
-            return err()
-        elif fe_n == "z":
-            if dd in ("Yplus", "Yminus"):
-                if FE.mn[2] >= JB6.mn[2]: return 6
-                if FE.mx[2] <= JB4.mx[2]: return 4
-                return 5
-            if dd == "Zplus": return 6
-            if dd == "Zminus": return 4
-            return err()
-        return err()
-
-    if se_n == "z":
-        if fe_n == "x":
-            if dd == "Xplus": return 6
-            if dd == "Xminus": return 4
-            if dd in ("Zplus", "Zminus"):
-                if FE.mn[0] >= JB6.mn[0]: return 6
-                if FE.mx[0] <= JB4.mx[0]: return 4
-                return 5
-            return err()
-        elif fe_n == "y":
-            if dd == "Yplus": return 3
-            if dd == "Yminus": return 1
-            if dd in ("Zplus", "Zminus"):
-                if FE.mn[1] >= JB3.mn[1]: return 3
-                if FE.mx[1] <= JB1.mx[1]: return 1
-                return 2
-            return err()
-        elif fe_n == "z":
-            if dd == "Xplus": return 6
-            if dd == "Xminus": return 4
-            if dd == "Yplus": return 3
-            if dd == "Yminus": return 1
-            return err()
-        return err()
+    # Case 3: FE wall perpendicular (thin axis equals SE long axis)
+    if fe_n == la:
+        if dd_ax == ta:
+            # choose 3/1/2 by where FE lies along SE length axis
+            if fe_min(la) >= jb_min(JB3, la):
+                return 3
+            if fe_max(la) <= jb_max(JB1, la):
+                return 1
+            return 2
+        if dd_ax == la:
+            return 3 if dd_sign == "plus" else 1
+        return None
 
     return None
 
 
 # -----------------------------
-# Connection zones (FIX: contact point)
+# Connection zones (contact point fix stays)
 # -----------------------------
 def face_areas_from_bbox(b: BBox) -> Dict[str, float]:
     sx, sy, sz = b.size()
@@ -416,12 +526,8 @@ def smallest_face_axes(b: BBox) -> Set[str]:
 
 
 def point_on_dd_face(ei: ElementInfo, ej: ElementInfo) -> Tuple[Vec3, str]:
-    """
-    FIX: Basis-Koordinaten aus clamp(ej.center) auf ei (statt overlap-mid).
-    Dann die DD-Face-Koordinate exakt auf mn/mx setzen.
-    """
     bi = ei.bbox
-    dd = compute_dd(ej, ei)  # nearest face on ei towards ej
+    dd = compute_dd(ej, ei)
     base = bi.clamp_point(ej.bbox.center())
     x, y, z = base
 
@@ -457,25 +563,39 @@ def border_strip_by_distance(elem: ElementInfo, p_on_elem: Vec3, large_face_axis
     return False
 
 
-def border_by_jb_paper(se_axis: str, fe_axis: str, fe_jb: Optional[int]) -> Optional[bool]:
+def border_by_jb_paper(se: ElementInfo, fe_axis: str, fe_jb: Optional[int]) -> Optional[bool]:
+    """
+    Rotation invariant:
+    - For wall SE:
+        * FE along SE long-axis => border if JB in (1,3)
+        * FE along z           => border if JB in (4,6)
+    - For slab SE:
+        * FE along slab long_axis  => border if JB in (1,3)
+        * FE along slab short_axis => border if JB in (4,6)
+    """
     if fe_jb is None:
         return None
 
-    if se_axis == "x":
-        if fe_axis == "y":
+    if is_wall(se.ifc_type):
+        la = se.long_axis
+        if la is None:
+            # fallback
+            la = "y" if (se.axis == "x") else "x"
+        if fe_axis == la:
             return fe_jb in (1, 3)
         if fe_axis == "z":
             return fe_jb in (4, 6)
-    elif se_axis == "y":
-        if fe_axis == "x":
+        return None
+
+    if is_slab(se.ifc_type):
+        la = se.long_axis or "x"
+        sa = se.short_axis or ("y" if la == "x" else "x")
+        if fe_axis == la:
             return fe_jb in (1, 3)
-        if fe_axis == "z":
+        if fe_axis == sa:
             return fe_jb in (4, 6)
-    elif se_axis == "z":
-        if fe_axis == "y":
-            return fe_jb in (1, 3)
-        if fe_axis == "x":
-            return fe_jb in (4, 6)
+        return None
+
     return None
 
 
@@ -486,7 +606,7 @@ def cz_for_pair(ei: ElementInfo, ej: ElementInfo, ej_jb_if_ei_is_se: Optional[in
     if face_axis in small_axes:
         return "short"
 
-    jb_border = border_by_jb_paper(ei.axis, ej.axis, ej_jb_if_ei_is_se)
+    jb_border = border_by_jb_paper(ei, ej.axis, ej_jb_if_ei_is_se)
     if jb_border is not None:
         return "border" if jb_border else "middle"
 
@@ -494,18 +614,22 @@ def cz_for_pair(ei: ElementInfo, ej: ElementInfo, ej_jb_if_ei_is_se: Optional[in
 
 
 def assign_dir_labels(elements: List[ElementInfo]) -> None:
+    # slabs are always "o"
     for e in elements:
-        if e.axis == "z":
+        if is_slab(e.ifc_type):
             e.dir_label = "o"
 
-    walls = [e for e in elements if e.axis in ("x", "y")]
+    walls = [e for e in elements if is_wall(e.ifc_type)]
     if not walls:
         return
+
+    # use wall ORIENTATION = long_axis (rotation invariant), not global axis name meaning
     ref = walls[0]
     ref.dir_label = "n"
-    ref_axis = ref.axis
+    ref_or = ref.long_axis
+
     for w in walls[1:]:
-        w.dir_label = "n" if w.axis == ref_axis else "m"
+        w.dir_label = "n" if w.long_axis == ref_or else "m"
 
 
 def build_cz_matrix(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int, Optional[int]]) -> Dict[int, Dict[int, str]]:
@@ -660,14 +784,19 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         bb = element_bbox(settings, e)
         if bb is None:
             continue
-        ax = classify_axis_from_bbox(e.is_a(), bb)
+
+        axis, long_axis, short_axis, thin_axis = classify_local_axes(e.is_a(), bb)
+
         infos[e.id()] = ElementInfo(
             ifc_id=e.id(),
             guid=getattr(e, "GlobalId", "") or "",
             ifc_type=e.is_a(),
             name=getattr(e, "Name", "") or "",
             bbox=bb,
-            axis=ax,
+            axis=axis,
+            long_axis=long_axis,
+            short_axis=short_axis,
+            thin_axis=thin_axis,
         )
 
     se_ids = [i for i, inf in infos.items() if is_wall(inf.ifc_type) or is_slab(inf.ifc_type)]
@@ -758,7 +887,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
 
 
 def main():
-    ifc_path = "./ifc-models/Lh1-2.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/Xh1-24-3.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
