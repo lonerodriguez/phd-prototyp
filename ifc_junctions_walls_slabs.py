@@ -2,29 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-Paper-konforme Stoßstellenanalyse (Hellwig Diss-Auszug) – OPTIMIERT
+Paper-konforme Stoßstellenanalyse (Hellwig Diss-Auszug) – stabilisiert (Fixes)
 
-Fix-Stand:
-- SE-seitige CZ (border/middle) wird NUR für paper-relevante Paare genutzt:
-  * Wall–Slab und Slab–Wall (Abb. 5.39–5.41)
-  => Tv1-24 / Tv2-13 korrekt
-- Wall–Wall bleibt vollständig face-basiert (sonst wird Lh1-2 kaputt)
-  => Lh1-2 wieder korrekt
-
-Features:
-- DD robust (nächstgelegene SE-Fläche)
-- Kontaktfilter gegen Kante/Punkt + Mini-Gap-Toleranz
-- Wall–Wall stacked contact erkannt
-- FE->JB Zuordnung per Algorithmus 1–3
-- CZ:
-  * SE-seitig: paper-konform nur für Wall<->Slab / Slab<->Wall
-  * sonst (u.a. Wall–Wall): face-basiert (short/border/middle)
-- Junction type matching permutation-invariant
-- Ausgabe: nur maximal (größte) Junctions (Superset wins)
-
-Outputs:
-  junctions_unique.json
-  junctions_debug.json
+Fixes:
+- Kontaktpunkt auf SE-Face: clamp(FE.center) statt overlap-mid (fix für Lh1-2 vs Th1-24)
+- compute_dd Tie-Breaking: bei Wall–Slab Z-Faces priorisieren (fix für Lv1-2)
+- Regel Xh1-24-3 bleibt enthalten
 """
 
 from __future__ import annotations
@@ -44,19 +27,19 @@ import numpy as np
 # -----------------------------
 # Paper / heuristic constants
 # -----------------------------
-OFF_03 = 0.30        # +/-0.3 m
-OFF_05 = 0.50        # +/-0.5 m  (border strip)
-CLOSE_TO = 0.30      # "close to" threshold (meters)
+OFF_03 = 0.30
+OFF_05 = 0.50
+CLOSE_TO = 0.30
 
-MIN_OVERLAP_LEN = 0.05   # 5 cm
-MIN_OVERLAP_AREA = 0.01  # 100 cm²
+MIN_OVERLAP_LEN = 0.05
+MIN_OVERLAP_AREA = 0.01
 
 EPS_FACE = 1e-6
-EDGE_GAP_TOL = 0.02      # 2 cm
+EDGE_GAP_TOL = 0.02
+DD_TIE_EPS = 1e-9
 
 Vec3 = Tuple[float, float, float]
 DD = str  # "Xplus","Xminus","Yplus","Yminus","Zplus","Zminus"
-
 
 # -----------------------------
 # Geometry primitives
@@ -185,10 +168,13 @@ def collect_walls_slabs(model) -> List:
 
 
 def classify_axis_from_bbox(ifc_type: str, b: BBox) -> str:
+    """
+    Für Wände: axis = "Normalen-/Dickenrichtung" (kleinere horizontale Ausdehnung)
+    """
     sx, sy, _ = b.size()
     if is_slab(ifc_type):
         return "z"
-    return "x" if sx >= sy else "y"
+    return "x" if sx <= sy else "y"
 
 
 # -----------------------------
@@ -285,11 +271,16 @@ def build_junction_boxes(se: ElementInfo) -> Dict[int, JB]:
 
 
 # -----------------------------
-# DD
+# DD + FE->JB assignment (FIX: tie-breaking)
 # -----------------------------
 def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
+    """
+    Robust DD: nearest face on SE to FE.
+    FIX: Tie-break. For Wall–Slab prefer Z faces (top/bottom) if equal distance.
+    """
     p = se.bbox.clamp_point(fe.bbox.center())
     smn, smx = se.bbox.mn, se.bbox.mx
+
     face_dists = [
         ("Xminus", abs(p[0] - smn[0])),
         ("Xplus",  abs(smx[0] - p[0])),
@@ -298,13 +289,26 @@ def compute_dd(fe: ElementInfo, se: ElementInfo) -> DD:
         ("Zminus", abs(p[2] - smn[2])),
         ("Zplus",  abs(smx[2] - p[2])),
     ]
-    dd, _ = min(face_dists, key=lambda t: t[1])
-    return dd
+    minv = min(d for _, d in face_dists)
+    candidates = [k for k, d in face_dists if abs(d - minv) <= DD_TIE_EPS]
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # tie-break priorities
+    wall_slab = (is_wall(se.ifc_type) and is_slab(fe.ifc_type)) or (is_slab(se.ifc_type) and is_wall(fe.ifc_type))
+    if wall_slab:
+        pref = ["Zplus", "Zminus", "Yplus", "Yminus", "Xplus", "Xminus"]
+    else:
+        pref = ["Xplus", "Xminus", "Yplus", "Yminus", "Zplus", "Zminus"]
+
+    for k in pref:
+        if k in candidates:
+            return k
+
+    return candidates[0]
 
 
-# -----------------------------
-# FE -> JB assignment (Algorithmus 1–3)
-# -----------------------------
 def assign_fe_to_jb(fe: ElementInfo, se: ElementInfo, jbs: Dict[int, JB]) -> Optional[int]:
     fe_n = fe.axis
     se_n = se.axis
@@ -398,7 +402,7 @@ def assign_fe_to_jb(fe: ElementInfo, se: ElementInfo, jbs: Dict[int, JB]) -> Opt
 
 
 # -----------------------------
-# Connection zones
+# Connection zones (FIX: contact point)
 # -----------------------------
 def face_areas_from_bbox(b: BBox) -> Dict[str, float]:
     sx, sy, sz = b.size()
@@ -411,28 +415,35 @@ def smallest_face_axes(b: BBox) -> Set[str]:
     return {sorted_axes[0], sorted_axes[1]}
 
 
-def is_on_face(b: BBox, axis: str, p: Vec3) -> bool:
-    if axis == "x":
-        return abs(p[0] - b.mn[0]) <= EPS_FACE or abs(p[0] - b.mx[0]) <= EPS_FACE
-    if axis == "y":
-        return abs(p[1] - b.mn[1]) <= EPS_FACE or abs(p[1] - b.mx[1]) <= EPS_FACE
-    return abs(p[2] - b.mn[2]) <= EPS_FACE or abs(p[2] - b.mx[2]) <= EPS_FACE
+def point_on_dd_face(ei: ElementInfo, ej: ElementInfo) -> Tuple[Vec3, str]:
+    """
+    FIX: Basis-Koordinaten aus clamp(ej.center) auf ei (statt overlap-mid).
+    Dann die DD-Face-Koordinate exakt auf mn/mx setzen.
+    """
+    bi = ei.bbox
+    dd = compute_dd(ej, ei)  # nearest face on ei towards ej
+    base = bi.clamp_point(ej.bbox.center())
+    x, y, z = base
+
+    if dd == "Xminus":
+        x = bi.mn[0]; face_axis = "x"
+    elif dd == "Xplus":
+        x = bi.mx[0]; face_axis = "x"
+    elif dd == "Yminus":
+        y = bi.mn[1]; face_axis = "y"
+    elif dd == "Yplus":
+        y = bi.mx[1]; face_axis = "y"
+    elif dd == "Zminus":
+        z = bi.mn[2]; face_axis = "z"
+    else:
+        z = bi.mx[2]; face_axis = "z"
+
+    return (x, y, z), face_axis
 
 
-def cz_face_based(elem: ElementInfo, p_on_elem: Vec3) -> str:
-    """
-    Face-based CZ: short/border/middle via bbox faces (dein bewährter Ansatz).
-    """
+def border_strip_by_distance(elem: ElementInfo, p_on_elem: Vec3, large_face_axis: str) -> bool:
     b = elem.bbox
-    small_axes = smallest_face_axes(b)
-
-    for ax in small_axes:
-        if is_on_face(b, ax, p_on_elem):
-            return "short"
-
-    areas = face_areas_from_bbox(b)
-    large_axis = max((ax for ax in areas.keys() if ax not in small_axes), key=lambda k: areas[k])
-    in_plane = [ax for ax in ("x", "y", "z") if ax != large_axis]
+    in_plane = [ax for ax in ("x", "y", "z") if ax != large_face_axis]
 
     def coord(ax: str) -> float:
         return p_on_elem[0] if ax == "x" else p_on_elem[1] if ax == "y" else p_on_elem[2]
@@ -442,81 +453,44 @@ def cz_face_based(elem: ElementInfo, p_on_elem: Vec3) -> str:
         mn = b.mn[0] if ax == "x" else b.mn[1] if ax == "y" else b.mn[2]
         mx = b.mx[0] if ax == "x" else b.mx[1] if ax == "y" else b.mx[2]
         if (v - mn) <= OFF_05 + 1e-9 or (mx - v) <= OFF_05 + 1e-9:
-            return "border"
-    return "middle"
+            return True
+    return False
 
 
-def cz_on_se_paper(se: ElementInfo, fe: ElementInfo, fe_jb: Optional[int]) -> str:
-    """
-    SE-seitig paper-konform für Abb. 5.39–5.41:
-    Nur sinnvoll für Wall<->Slab bzw. Slab<->Wall (also orthogonal, große Fläche relevant).
-    """
+def border_by_jb_paper(se_axis: str, fe_axis: str, fe_jb: Optional[int]) -> Optional[bool]:
     if fe_jb is None:
-        return "middle"
+        return None
 
-    p = se.bbox.clamp_point(fe.bbox.center())
-    mnx, mny, mnz = se.bbox.mn
-    mxx, mxy, mxz = se.bbox.mx
-
-    # SE axis x (Abb. 5.39)
-    if se.axis == "x":
-        if fe.axis == "y":
-            if fe_jb == 1:
-                return "border" if (mny - 1e-9) <= p[1] <= (mny + OFF_05 + 1e-9) else "middle"
-            if fe_jb == 3:
-                return "border" if (mxy - OFF_05 - 1e-9) <= p[1] <= (mxy + 1e-9) else "middle"
-            return "middle"
-        if fe.axis == "z":
-            if fe_jb == 4:
-                return "border" if (mnz - 1e-9) <= p[2] <= (mnz + OFF_05 + 1e-9) else "middle"
-            if fe_jb == 6:
-                return "border" if (mxz - OFF_05 - 1e-9) <= p[2] <= (mxz + 1e-9) else "middle"
-            return "middle"
-
-    # SE axis y (Abb. 5.40)
-    if se.axis == "y":
-        if fe.axis == "x":
-            if fe_jb == 1:
-                return "border" if (mnx - 1e-9) <= p[0] <= (mnx + OFF_05 + 1e-9) else "middle"
-            if fe_jb == 3:
-                return "border" if (mxx - OFF_05 - 1e-9) <= p[0] <= (mxx + 1e-9) else "middle"
-            return "middle"
-        if fe.axis == "z":
-            if fe_jb == 4:
-                return "border" if (mnz - 1e-9) <= p[2] <= (mnz + OFF_05 + 1e-9) else "middle"
-            if fe_jb == 6:
-                return "border" if (mxz - OFF_05 - 1e-9) <= p[2] <= (mxz + 1e-9) else "middle"
-            return "middle"
-
-    # SE axis z (Abb. 5.41)
-    if se.axis == "z":
-        if fe.axis == "y":
-            if fe_jb == 1:
-                return "border" if (mny - 1e-9) <= p[1] <= (mny + OFF_05 + 1e-9) else "middle"
-            if fe_jb == 3:
-                return "border" if (mxy - OFF_05 - 1e-9) <= p[1] <= (mxy + 1e-9) else "middle"
-            return "middle"
-        if fe.axis == "x":
-            if fe_jb == 4:
-                return "border" if (mnx - 1e-9) <= p[0] <= (mnx + OFF_05 + 1e-9) else "middle"
-            if fe_jb == 6:
-                return "border" if (mxx - OFF_05 - 1e-9) <= p[0] <= (mxx + 1e-9) else "middle"
-            return "middle"
-
-    return "middle"
+    if se_axis == "x":
+        if fe_axis == "y":
+            return fe_jb in (1, 3)
+        if fe_axis == "z":
+            return fe_jb in (4, 6)
+    elif se_axis == "y":
+        if fe_axis == "x":
+            return fe_jb in (1, 3)
+        if fe_axis == "z":
+            return fe_jb in (4, 6)
+    elif se_axis == "z":
+        if fe_axis == "y":
+            return fe_jb in (1, 3)
+        if fe_axis == "x":
+            return fe_jb in (4, 6)
+    return None
 
 
-def contact_point_on_element_bbox(ei: ElementInfo, ej: ElementInfo) -> Vec3:
-    return ei.bbox.clamp_point(ej.bbox.center())
+def cz_for_pair(ei: ElementInfo, ej: ElementInfo, ej_jb_if_ei_is_se: Optional[int]) -> str:
+    p, face_axis = point_on_dd_face(ei, ej)
 
+    small_axes = smallest_face_axes(ei.bbox)
+    if face_axis in small_axes:
+        return "short"
 
-def should_use_paper_se_cz(se: ElementInfo, fe: ElementInfo) -> bool:
-    """
-    KRITISCHER FIX:
-    Paper-SE-CZ (JB/0.5m) nur für Wall<->Slab oder Slab<->Wall.
-    Für Wall–Wall bleibt face-based (sonst Lh1-2 kaputt).
-    """
-    return (is_wall(se.ifc_type) and is_slab(fe.ifc_type)) or (is_slab(se.ifc_type) and is_wall(fe.ifc_type))
+    jb_border = border_by_jb_paper(ei.axis, ej.axis, ej_jb_if_ei_is_se)
+    if jb_border is not None:
+        return "border" if jb_border else "middle"
+
+    return "border" if border_strip_by_distance(ei, p, face_axis) else "middle"
 
 
 def assign_dir_labels(elements: List[ElementInfo]) -> None:
@@ -534,12 +508,10 @@ def assign_dir_labels(elements: List[ElementInfo]) -> None:
         w.dir_label = "n" if w.axis == ref_axis else "m"
 
 
-def build_cz_matrix(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int, int]) -> Dict[int, Dict[int, str]]:
+def build_cz_matrix(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int, Optional[int]]) -> Dict[int, Dict[int, str]]:
     by_id = {e.ifc_id: e for e in elements}
     ids = [e.ifc_id for e in elements]
     cz: Dict[int, Dict[int, str]] = {i: {} for i in ids}
-
-    se = by_id[se_id]
 
     for i in ids:
         for j in ids:
@@ -548,16 +520,10 @@ def build_cz_matrix(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int,
             ei, ej = by_id[i], by_id[j]
             if not has_sufficient_contact(ej, ei):
                 continue
+            ej_jb = fe_to_jb.get(j) if i == se_id else None
+            cz[i][j] = cz_for_pair(ei, ej, ej_jb)
 
-            # --- SE-seitig: paper nur für Wall<->Slab / Slab<->Wall ---
-            if i == se_id and should_use_paper_se_cz(se, ej):
-                jb = fe_to_jb.get(j)
-                cz[i][j] = cz_on_se_paper(se, ej, jb)
-            else:
-                p = contact_point_on_element_bbox(ei, ej)
-                cz[i][j] = cz_face_based(ei, p)
-
-    # neutral 0 for flanker-flanker separated by SE
+    se = by_id[se_id]
     fl = [i for i in ids if i != se_id]
     for a, b in combinations(fl, 2):
         ea, eb = by_id[a], by_id[b]
@@ -591,20 +557,10 @@ RULES: List[Dict[str, Any]] = [
         (2, 3, "0"),      (3, 2, "0"),
     ]),
 
-    mk_rule("Tv2-1-4", ["n", "n", "o"], [
-        (1, 3, "short"), (2, 3, "short"),
-        (1, 2, "0"), (2, 1, "0"),
-    ]),
-
-    mk_rule("Tv1-2-4", ["n", "n", "o"], [
-        (1, 3, "short"), (2, 3, "short"),
-        (3, 1, "border"), (3, 2, "border"),
-        (1, 2, "short"), (2, 1, "short"),
-    ]),
-    mk_rule("Tv1-2:4", ["n", "n", "o"], [
-        (1, 3, "short"), (2, 3, "short"),
-        (3, 1, "border"), (3, 2, "border"),
-        (1, 2, "0"), (2, 1, "0"),
+    mk_rule("Xh1-24-3", ["n", "m", "m"], [
+        (1, 2, "middle"), (1, 3, "middle"),
+        (2, 1, "short"),  (3, 1, "short"),
+        (2, 3, "0"),      (3, 2, "0"),
     ]),
 ]
 
@@ -616,7 +572,7 @@ def multiset(lst: List[str]) -> Dict[str, int]:
     return d
 
 
-def match_rule(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int, int]) -> Tuple[str, Dict[str, Any]]:
+def match_rule(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int, Optional[int]]) -> Tuple[str, Dict[str, Any]]:
     assign_dir_labels(elements)
     cz = build_cz_matrix(elements, se_id, fe_to_jb)
 
@@ -666,7 +622,7 @@ def match_rule(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int, int]
 
 
 # -----------------------------
-# Post processing: keep only maximal junctions (superset wins)
+# Post processing
 # -----------------------------
 def junction_score(j: Dict[str, Any]) -> Tuple[int, int]:
     jt = j.get("junction_type", "UNKNOWN")
@@ -677,7 +633,7 @@ def junction_score(j: Dict[str, Any]) -> Tuple[int, int]:
 
 def keep_only_maximal_junctions(junctions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     sets = [(frozenset(j["element_ids"]), j) for j in junctions]
-    sets.sort(key=lambda x: (junction_score(x[1])[0], junction_score(x[1])[1]), reverse=True)
+    sets.sort(key=lambda x: junction_score(x[1]), reverse=True)
 
     kept: List[Tuple[frozenset, Dict[str, Any]]] = []
     for s, j in sets:
@@ -730,12 +686,12 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
             if has_sufficient_contact(fe, se):
                 candidates.append(fe)
 
-        fe_to_jb_all: Dict[int, int] = {}
+        fe_to_jb_all: Dict[int, Optional[int]] = {}
         for fe in candidates:
             jb_id = assign_fe_to_jb(fe, se, jbs)
+            fe_to_jb_all[fe.ifc_id] = jb_id
             if jb_id is None:
                 continue
-            fe_to_jb_all[fe.ifc_id] = jb_id
             if fe.ifc_id not in jbs[jb_id].fe_ids:
                 jbs[jb_id].fe_ids.append(fe.ifc_id)
 
@@ -745,8 +701,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
                 continue
             elem_ids = [jb.se_id] + fe_list
             elems = [infos[i] for i in elem_ids]
-
-            fe_to_jb = {fid: fe_to_jb_all.get(fid, jb_id) for fid in fe_list}
+            fe_to_jb = {fid: fe_to_jb_all.get(fid) for fid in fe_list}
             jtype, dbg = match_rule(elems, se_id, fe_to_jb)
 
             rows.append({
@@ -771,7 +726,6 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
             chosen = cand_sorted[:3]
             elem_ids = [se_id] + [fe.ifc_id for fe in chosen]
             elems = [infos[i] for i in elem_ids]
-
             fe_to_jb = {fe.ifc_id: fe_to_jb_all.get(fe.ifc_id) for fe in chosen}
             jtype, dbg = match_rule(elems, se_id, fe_to_jb)
 
@@ -792,23 +746,19 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
                 "debug": dbg,
             })
 
-    def base_score(t: str) -> int:
-        return 2 if t not in ("UNKNOWN", "NONE") else 1 if t == "UNKNOWN" else 0
-
     best: Dict[Tuple[int, ...], Dict[str, Any]] = {}
     for r in rows:
         key = tuple(sorted(r["element_ids"]))
-        if key not in best or base_score(r["junction_type"]) > base_score(best[key]["junction_type"]):
+        if key not in best or junction_score(r) > junction_score(best[key]):
             best[key] = r
 
-    unique = list(best.values())
-    unique = keep_only_maximal_junctions(unique)
+    unique = keep_only_maximal_junctions(list(best.values()))
     unique.sort(key=lambda x: (x["junction_type"], x["element_ids"]))
     return unique, rows
 
 
 def main():
-    ifc_path = "./ifc-models/Lv1-2.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/Lh1-2.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)

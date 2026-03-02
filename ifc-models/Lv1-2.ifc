@@ -1,7 +1,7 @@
 ISO-10303-21;
 HEADER;
-FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]','RevitIdentifiers [ContentGUID: cea3365e-6110-4699-afa4-e88ee273adb1, VersionGUID: 51fadb69-0b94-49ae-80fe-4b0546e4ed67, NumberOfSaves: 11]','CoordinateReference [CoordinateBase: Shared Coordinates]'),'2;1');
-FILE_NAME('LV1-2.ifc','2026-03-02T12:21:53+01:00',(''),(''),'ODA SDAI 25.12','Autodesk - Revit 26.4.0.32 (ENG) - 26.4.0.32','');
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]','RevitIdentifiers [ContentGUID: cea3365e-6110-4699-afa4-e88ee273adb1, VersionGUID: 51fadb69-0b94-49ae-80fe-4b0546e4ed67, NumberOfSaves: 12]','CoordinateReference [CoordinateBase: Shared Coordinates]'),'2;1');
+FILE_NAME('Lv1-2.ifc','2026-03-02T13:47:50+01:00',(''),(''),'ODA SDAI 25.12','Autodesk - Revit 26.4.0.32 (ENG) - 26.4.0.32','');
 FILE_SCHEMA(('IFC2X3'));
 ENDSEC;
 
@@ -11,7 +11,7 @@ DATA;
 #3=IFCPERSON($,'','jakob.fellner',$,$,$,$,$);
 #4=IFCORGANIZATION($,'','',$,$);
 #5=IFCPERSONANDORGANIZATION(#3,#4,$);
-#6=IFCOWNERHISTORY(#5,#2,$,.NOCHANGE.,$,$,$,1772450371);
+#6=IFCOWNERHISTORY(#5,#2,$,.NOCHANGE.,$,$,$,1772450563);
 #7=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
 #8=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
 #9=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
