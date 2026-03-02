@@ -670,22 +670,122 @@ def cz_for_pair(ei: ElementInfo, ej: ElementInfo, ej_jb_if_ei_is_se: Optional[in
 
 
 def assign_dir_labels(elements: List[ElementInfo]) -> None:
-    # slabs are always "o"
+    """
+    Rotationsinvariante, deterministische Dir-Labels:
+    - Slab/Roof: immer 'o'
+    - Walls:
+        * Bei 2 Wänden mit unterschiedlicher Orientierung:
+            -> 'n' ist die Wand, die den Kontakt zur anderen als Stirnfläche sieht
+               (Wall–Wall: face_axis == Längsachse => "short").
+            -> die andere ist 'm'
+        * Sonst (>=3 Wände oder 2 parallele):
+            -> größte Orientierungsgruppe (long_axis) => 'n', Rest => 'm'
+            -> Tie-break stabil über Achsenname ('x'<'y')
+    """
+
+    # slabs always "o"
     for e in elements:
         if is_slab(e.ifc_type):
             e.dir_label = "o"
+        else:
+            e.dir_label = ""
 
     walls = [e for e in elements if is_wall(e.ifc_type)]
     if not walls:
         return
 
-    # use wall ORIENTATION = long_axis (rotation invariant), not global axis name meaning
-    ref = walls[0]
-    ref.dir_label = "n"
-    ref_or = ref.long_axis
+    # Fallback long_axis if missing (shouldn't happen)
+    for w in walls:
+        if w.long_axis is None:
+            sx, sy, _ = w.bbox.size()
+            w.long_axis = "x" if sx >= sy else "y"
 
-    for w in walls[1:]:
-        w.dir_label = "n" if w.long_axis == ref_or else "m"
+    # ---- Special case: exactly 2 walls ----
+    if len(walls) == 2:
+        a, b = walls[0], walls[1]
+
+        # parallel walls -> both 'n'
+        if a.long_axis == b.long_axis:
+            a.dir_label = "n"
+            b.dir_label = "n"
+            return
+
+        # perpendicular -> decide n/m by who sees an end-face contact (=short)
+        # Use the same logic as cz_for_pair for wall-wall short detection:
+        def wall_sees_short(ei: ElementInfo, ej: ElementInfo) -> bool:
+            p, face_axis = point_on_dd_face(ei, ej)
+            la = wall_length_axis(ei)  # length axis of wall ei
+            return face_axis == la
+
+        a_short = wall_sees_short(a, b)
+        b_short = wall_sees_short(b, a)
+
+        if a_short and not b_short:
+            a.dir_label = "n"
+            b.dir_label = "m"
+            return
+        if b_short and not a_short:
+            b.dir_label = "n"
+            a.dir_label = "m"
+            return
+
+        # ambiguous fallback (both short or both not short):
+        # choose stable by ifc_id
+        w_sorted = sorted([a, b], key=lambda e: e.ifc_id)
+        w_sorted[0].dir_label = "n"
+        w_sorted[1].dir_label = "m"
+        return
+        # ---- Special case: exactly 3 walls (detect Xh1-24-3 / Th2-1-4 style "stem") ----
+    if len(walls) == 3:
+        a, b, c = walls[0], walls[1], walls[2]
+
+        def wall_sees_short(ei: ElementInfo, ej: ElementInfo) -> bool:
+            p, face_axis = point_on_dd_face(ei, ej)
+            la = wall_length_axis(ei)
+            return face_axis == la
+
+        # try each wall as stem candidate
+        for w in (a, b, c):
+            others = [x for x in (a, b, c) if x is not w]
+            o1, o2 = others[0], others[1]
+
+            # X/T-like prerequisite:
+            # - both others contact the stem
+            # - the others do NOT contact each other (=> "0" relation)
+            if not has_sufficient_contact(o1, w) or not has_sufficient_contact(o2, w):
+                continue
+            if has_sufficient_contact(o1, o2) or has_sufficient_contact(o2, o1):
+                continue
+
+            # directionality:
+            # others hit stem on end-face => short towards stem
+            # stem is hit on side-face => NOT short towards others
+            if wall_sees_short(o1, w) and wall_sees_short(o2, w) and \
+               (not wall_sees_short(w, o1)) and (not wall_sees_short(w, o2)):
+                w.dir_label = "n"
+                o1.dir_label = "m"
+                o2.dir_label = "m"
+                return
+
+    # ---- General case: >= 3 walls ----
+    groups: Dict[str, List[ElementInfo]] = {}
+    for w in walls:
+        groups.setdefault(w.long_axis, []).append(w)
+
+    # all same orientation -> all n
+    if len(groups) == 1:
+        for w in walls:
+            w.dir_label = "n"
+        return
+
+    # largest group => n, others => m (stable tie-break by axis key)
+    group_items = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    n_axis = group_items[0][0]
+
+    for ax, ws in groups.items():
+        label = "n" if ax == n_axis else "m"
+        for w in ws:
+            w.dir_label = label
 
 
 def build_cz_matrix(elements: List[ElementInfo], se_id: int, fe_to_jb: Dict[int, Optional[int]]) -> Dict[int, Dict[int, str]]:
@@ -748,13 +848,6 @@ RULES: List[Dict[str, Any]] = [
         (1, 2, "short"), (1, 3, "short"),
         (2, 1, "border"), (3, 1, "border"),
         (2, 3, "0"), (3, 2, "0"),
-    ]),
-
-        # Th1-2-4 (Wall split + perpendicular wall)
-    mk_rule("Th1-2-4", ["n", "m", "n"], [
-        (1, 2, "short"), (1, 3, "short"),
-        (2, 1, "border"), (2, 3, "short"),
-        (3, 1, "border"), (3, 2, "short"),
     ]),
 
     mk_rule("Th1-2-4", ["n", "n", "m"], [
@@ -965,7 +1058,7 @@ def analyze(ifc_path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
 
 
 def main():
-    ifc_path = "./ifc-models/Tv2-1-4.ifc" if len(sys.argv) < 2 else sys.argv[1]
+    ifc_path = "./ifc-models/Xh1-24-3.ifc" if len(sys.argv) < 2 else sys.argv[1]
     if not os.path.exists(ifc_path):
         print(f"ERROR: IFC not found: {ifc_path}")
         sys.exit(1)
