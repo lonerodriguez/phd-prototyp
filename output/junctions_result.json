@@ -1,32 +1,35 @@
 {
   "meta": {
-    "ifc_path": "ifc-models\\Tv1-24.ifc",
-    "timestamp": "2026-03-03T14:17:21"
+    "ifc_path": "ifc-models\\Tv1-2-4.ifc",
+    "timestamp": "2026-03-03T14:27:37"
   },
   "summary": {
     "total_junctions": 1,
-    "separating_elements": 2,
+    "separating_elements": 3,
     "junction_type_counts": {
-      "Lv1-2": 1
+      "Tv1-24": 1
     }
   },
   "junctions": [
     {
-      "se_ifc_id": 56,
-      "se_type": "IfcSlab",
+      "se_ifc_id": 142,
+      "se_type": "IfcWallStandardCase",
       "jb_id": 6,
-      "junction_type": "Lv1-2",
+      "junction_type": "Tv1-24",
       "fe_ifc_ids": [
-        142
+        190,
+        56
       ],
       "element_directions": {
-        "142": "n"
+        "190": "n",
+        "56": "o"
       },
       "connection_zones": {
-        "142": "short"
+        "190": "border",
+        "56": "short"
       },
       "confidence": "ok",
-      "notes": "L-Stoß: Wand–Decke, Seite",
+      "notes": "Tv1-24: gemischt Wand+Decke",
       "type_matrix": {
         "header": [
           "El.Di.",
@@ -35,19 +38,25 @@
         ],
         "rows": [
           [
-            "o",
+            "n",
             "",
             ""
           ],
           [
-            "n",
+            "o",
             "short",
             "short"
+          ],
+          [
+            "n",
+            "border",
+            "border"
           ]
         ],
         "element_ids": [
+          142,
           56,
-          142
+          190
         ]
       }
     }
