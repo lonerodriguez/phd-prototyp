@@ -1,21 +1,21 @@
 {
   "meta": {
-    "ifc_path": "ifc-models\\Tv2-13.ifc",
-    "timestamp": "2026-03-03T11:54:30"
+    "ifc_path": "ifc-models\\Tv1-24.ifc",
+    "timestamp": "2026-03-03T14:17:21"
   },
   "summary": {
     "total_junctions": 1,
     "separating_elements": 2,
     "junction_type_counts": {
-      "Tv1-24": 1
+      "Lv1-2": 1
     }
   },
   "junctions": [
     {
       "se_ifc_id": 56,
       "se_type": "IfcSlab",
-      "jb_id": 2,
-      "junction_type": "Tv1-24",
+      "jb_id": 6,
+      "junction_type": "Lv1-2",
       "fe_ifc_ids": [
         142
       ],
@@ -26,7 +26,30 @@
         "142": "short"
       },
       "confidence": "ok",
-      "notes": "Tv1-24: Wand trifft Decke(SE) im Rand"
+      "notes": "L-Stoß: Wand–Decke, Seite",
+      "type_matrix": {
+        "header": [
+          "El.Di.",
+          "CoZo.SE",
+          "CoZo.FE"
+        ],
+        "rows": [
+          [
+            "o",
+            "",
+            ""
+          ],
+          [
+            "n",
+            "short",
+            "short"
+          ]
+        ],
+        "element_ids": [
+          56,
+          142
+        ]
+      }
     }
   ]
 }

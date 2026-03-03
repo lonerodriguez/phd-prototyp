@@ -700,52 +700,44 @@ def identify_junction_type(jb: JunctionBox) -> tuple:
 # ---------------------------------------------------------------------------
 
 def _classify_1fe(se, fe, d, czf, czs, jb_id, slab) -> tuple:
-    """
-    Tabelle 1-FE:
-      Lh1-2  : Wand-SE, d=n, czf=short (keine Deckenbeteiligung)
-      Lv1-2  : Wand-SE, d=o, czf=short  ODER  Decke-SE, d=n/m/o, czf=short
-      Tv2-13 : d=o, czf=middle
-      Th1-24 : Wand-SE, d=n, czf=short, czs=middle  (T aus Wandperspektive)
-               Wand-SE, d=m, czs=middle
-      Tv1-24 : Wand-SE, d=o, czf≠middle, czs≠middle → Decke trifft Wand seitlich
-               Wand-SE, d=n, czf=middle
-    """
-    # Decke trifft SE in der Mitte
-    if d == "o" and czf == "middle":
-        return ("Tv2-13", "Tv2-13: Decke trifft SE-Mitte")
-    if d in ("n", "m") and czs == "middle":
-        # SE-Ende trifft FE-Mitte
-        if slab:
-            return ("Tv2-13", "Tv2-13: Wand(FE) trifft Decke(SE)-Mitte")
-        return ("Th1-24", "Th1-24: SE trifft FE-Mitte")
+
+    # ── Primär: cz_fe entscheidet (rotationsrobust, aus Paper-Tabelle) ──
+    #
+    # Tv2-13: Decke(o) trifft SE-Mitte  → czf = "middle"
+    # Tv1-24: Decke(o) trifft SE-Rand   → czf = "short" oder "border"
+    # Th1-24: Wand(m)  trifft SE-Mitte  → czs = "middle"
+    # Tv2-13: Wand(n/m) trifft Decke(SE)-Mitte → czs = "middle"
 
     if not slab:
         # SE = Wand
         if d == "o":
-            # Decke trifft Wand seitlich (JB4/6) oder an Rand
-            if czf == "short":
-                return ("Lv1-2", "Lv1-2: Decke trifft Wandende")
+            if czf == "middle":
+                return ("Tv2-13", "Tv2-13: Decke(o) trifft Wandmitte (czf=middle)")
             if czf == "border":
-                return ("Tv1-24", "Tv1-24: Decke trifft Wand(SE) im Rand")
-            return ("Tv1-24", "Tv1-24: Decke–Wand")
-        if d == "n":
+                return ("Tv1-24", "Tv1-24: Decke(o) trifft Wand im Rand (czf=border)")
+            # czf == "short": Decke trifft Wandende stirnseitig
+            return ("Tv1-24", "Tv1-24: Decke(o) trifft Wandende (czf=short)")
+        if d in ("n", "m"):
+            if czs == "middle":
+                return ("Th1-24", "Th1-24: Wand trifft SE-Mitte (czs=middle)")
             if czs == "border":
-                if jb_id in (1, 3):
-                    return ("Th1-2-4", "Th1-2-4: Parallelwand, SE-Ende im Rand")
-                return ("Lh1-2", "Lh1-2: Parallelwand, Ecke")
-            return ("Lh1-2", "Lh1-2: Parallelwand")
-        if d == "m":
-            if czs == "border":
-                return ("Th1-2:4", "Th1-2:4: Querwand, SE-Ende im Rand")
-            return ("Lh1-2", "Lh1-2: Querwand, Ecke")
+                if d == "n":
+                    return ("Th1-2-4", "Th1-2-4: Parallelwand im Rand")
+                return ("Th1-2:4", "Th1-2:4: Querwand im Rand")
+            return ("Lh1-2", "Lh1-2: Wand–Wand Ecke")
     else:
         # SE = Decke
         if d == "o":
             return ("Lv1-2", "Lv1-2: Decke–Decke")
         if d in ("n", "m"):
-            if czs == "border":
-                return ("Tv1-24", "Tv1-24: Wand trifft Decke(SE) im Rand")
-            return ("Lv1-2", "Lv1-2: Wand–Decke, Seite")
+            if czf == "middle":
+                return ("Tv2-13", "Tv2-13: Wand(FE) trifft Decke(SE)-Mitte (czf=middle)")
+            if czs == "middle":
+                return ("Tv2-13", "Tv2-13: Decke(SE) trifft Wandmitte (czs=middle)")
+            if czf == "border":
+                return ("Tv1-24", "Tv1-24: Wand trifft Deckenrand (czf=border)")
+            # czf == "short": Wand trifft Deckenkante stirnseitig
+            return ("Lv1-2", "Lv1-2: Wand–Decke, Stirnseite")
 
     return ("Lv1-2" if (slab or d == "o") else "Lh1-2", "L-Stoß (Fallback 1FE)")
 
@@ -1239,7 +1231,7 @@ def run(ifc_path: str, out_dir: str) -> None:
 # ===========================================================================
 
 def main():
-    IFC_PATH = "./ifc-models/Tv2-13.ifc"
+    IFC_PATH = "./ifc-models/Lv1-2.ifc"
     OUT_DIR  = "./output"
 
     parser = argparse.ArgumentParser(
