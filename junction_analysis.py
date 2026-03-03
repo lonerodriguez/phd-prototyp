@@ -953,13 +953,14 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
         if cz0 == "short" and cz1 == "short":
             if opposite_n_sides():
                 if same_v_side():
-                    t = "Tv1-2:4" if slab else "Th1-2:4"
-                    return (t, f"{t}: gleiche v-Seite, gegenüberl. n-Seiten")
-                else:
-                    t = "Tv2-1-4" if slab else "Th2-1-4"
-                    return (t, f"{t}: SE trennt 2 Elemente oben/unten (versch. v-Seiten)")
-            t = "Tv1-24" if slab else "Th1-24"
-            return (t, f"{t}: beidseitig short, gleiche n-Seite")
+                    # Tv2-1-4: Decke liegt ZWISCHEN zwei Wandscheiben (dirs = n,n)
+                    # Tv1-2:4: Decke liegt neben zwei Querwänden (dirs = m,m)
+                    if "n" in dirs:
+                        t = "Tv2-1-4" if slab else "Th2-1-4"
+                        return (t, f"{t}: Decke/Wand liegt zwischen zwei Wandscheiben(n)")
+                    else:
+                        t = "Tv1-2:4" if slab else "Th1-2:4"
+                        return (t, f"{t}: gleiche v-Seite, gegenüberl. n-Seiten, Querwände(m)")
 
         if "middle" in (s0, s1):
             t = "Tv2-1-4" if slab else "Th2-1-4"
@@ -971,11 +972,20 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
             # Th1-2:4 / Tv1-2:4: nur m-Elemente, SE-Ende liegt im Rand-CZ eines FEs
             #   → SE stößt gegen die Fläche einer Querwand, nicht an deren Ende
             if has_n and has_m:
+                # Index des n-Elements (parallele Wand / Fortsetzung)
+                n_idx = next(i for i, d in enumerate(dirs) if d == "n")
+                cz_se_on_n = cz_se[n_idx]   # wie trifft SE auf die parallele Wand?
+
+                # SE-Ende liegt INNERHALB der Fortsetzungswand (border/middle)
+                # → Decke/Wand trennt zwei Wandscheiben → Tv2-1-4 / Th2-1-4
+                if cz_se_on_n in ("border", "middle"):
+                    t = "Tv2-1-4" if slab else "Th2-1-4"
+                    return (t, f"{t}: SE-Ende liegt in Fortsetzungswand(n), Querwand(m) stirnseitig")
+
+                # SE-Ende liegt an der KANTE der Fortsetzungswand (short)
+                # → klassischer Eck-Stoß mit Querwand → Tv1-2-4 / Th1-2-4
                 t = "Tv1-2-4" if slab else "Th1-2-4"
-                return (t, f"{t}: paralleles(n) + Querwand(m), CZ=border")
-            else:
-                t = "Tv1-2:4" if slab else "Th1-2:4"
-                return (t, f"{t}: nur Querwände(m), SE-Ende trifft FE-Rand")
+                return (t, f"{t}: SE-Ende an Kante der Fortsetzungswand(n), CZ=border")
 
         t = "Tv1-24" if slab else "Th1-24"
         return (t, f"{t}: allgemein")
@@ -999,11 +1009,30 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
 
     # ── Gemischt Wand + Decke ──
     if "o" in dir_set:
-        if "middle" in cz_fe:
-            return ("Tv2-13",  "Tv2-13: Decke trifft Wandmitte")
-        return ("Tv1-24",      "Tv1-24: gemischt Wand+Decke")
+        slab_idx = next(i for i, d in enumerate(dirs) if d == "o")
+        wall_dirs = [d for d in dirs if d != "o"]
+        
+        cz_slab_on_se = cz_fe[slab_idx]
+        cz_se_on_slab = cz_se[slab_idx]
 
-    return ("Tv1-24", "T-Stoß (allgemein, 2 FE)")
+        has_n_wall = "n" in wall_dirs   # parallele Wand vorhanden?
+        has_m_wall = "m" in wall_dirs   # Querwand vorhanden?
+
+        # Decke trifft SE-Wand in der Mitte → T-Stoß (Tv2-13)
+        if cz_slab_on_se == "middle" or cz_se_on_slab == "middle":
+            return ("Tv2-13", "Tv2-13: Decke trifft Wandmitte")
+
+        # Parallele Wand(n) + Decke(o) → Tv1-2:4
+        # = SE-Wand endet an der Stelle wo Decke + Fortsetzungswand zusammentreffen
+        if has_n_wall:
+            return ("Tv1-2:4", "Tv1-2:4: parallele Wand(n) + Decke(o) am SE-Ende")
+
+        # Nur Querwand(m) + Decke(o), Decke am Rand → Tv1-2:4
+        if has_m_wall and cz_slab_on_se == "border":
+            return ("Tv1-2:4", "Tv1-2:4: Querwand(m) + Decke(o) im Randbereich")
+
+        # Decke stirnseitig, keine parallele Wand → Tv1-24
+        return ("Tv1-24", "Tv1-24: Decke trifft Wand(SE) stirnseitig")
 
 
 def _classify_3fe(se, fes, cz_fe, cz_se, dirs, slab: bool) -> tuple[str, str]:
@@ -1028,7 +1057,14 @@ def _classify_3fe(se, fes, cz_fe, cz_se, dirs, slab: bool) -> tuple[str, str]:
         # SE = Wand
         # Alle FEs sind Wände (m/n) → horizontales X im Grundriss
         if o_cnt == 0:
-            return ("Xh1-24-3",  "Xh1-24-3: SE-Wand + 3 Querwände (horizontal X)")
+            # n-Element vorhanden → prüfe ob SE in Fortsetzungswand endet
+            if n_cnt >= 1:
+                n_idx = next(i for i, d in enumerate(dirs) if d == "n")
+                cz_se_on_n = cz_se[n_idx]
+                if cz_se_on_n in ("border", "middle"):
+                    t = "Xv2-1-4" if slab else "Xh2-1-4"   # falls X-Stoß mit 3 FEs
+                    return (t, f"{t}: SE-Ende in Fortsetzungswand(n)")
+            return ("Xh1-24-3", "Xh1-24-3: SE-Wand + 3 Querwände (horizontal X)")
         # FEs enthalten Decken → vertikales X im Aufriss
         if o_cnt >= 2:
             return ("Xv2-13-4",  "Xv2-13-4: SE-Wand + 2 Decken durch Mitte")
@@ -1256,7 +1292,7 @@ def main():
     # -----------------------------------------------------------------------
     # KONFIGURATION – hier IFC-Pfad und Ausgabeverzeichnis anpassen
     # -----------------------------------------------------------------------
-    IFC_PATH = "./ifc-models/Tv2-13.ifc"
+    IFC_PATH = "./ifc-models/Tv2-1-4.ifc"
     OUT_DIR  = "./output"
     # -----------------------------------------------------------------------
 

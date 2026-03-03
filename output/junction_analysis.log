@@ -1,32 +1,32 @@
-11:06:28  INFO      ============================================================
-11:06:28  INFO      IFC Junction Analysis  –  2026-03-03T11:06:28
-11:06:28  INFO      ============================================================
-11:06:28  INFO      Lade IFC: ifc-models\Tv2-13.ifc
-11:06:28  INFO      Schema: IFC2X3  |  Elemente: 208 Entitäten
-11:06:28  INFO      Extrahiere Bauteilgeometrie …
-11:06:28  INFO        2 Bauteile geladen, 0 übersprungen.
-11:06:28  INFO      Identifiziere Trennelemente …
-11:06:28  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
-11:06:28  INFO        2 Trennelemente.
-11:06:28  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
-11:06:28  DEBUG       SE #142: 1 flankierende Elemente
-11:06:28  DEBUG         DD-Normen  n=0.000  u=0.000  v=0.634  (raw n=0.000 u=-0.000 v=-0.951)
-11:06:28  DEBUG       FE #56 (o) → JB4
-11:06:28  DEBUG         identify_junction_type: jb_id=4 n_fe=1 slab=False dirs=['o'] cz_fe=['border'] cz_se=['short']
-11:06:28  INFO        JB4: Tv1-24           FEs: [56]  [ok]
-11:06:28  DEBUG              Note: T-Stoß vertikal: Decke trifft Wand an Rand
-11:06:28  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
-11:06:28  DEBUG       SE #56: 1 flankierende Elemente
-11:06:28  DEBUG         DD-Normen  n=2.366  u=0.000  v=0.000  (raw n=-0.951 u=0.000 v=0.000)
-11:06:28  DEBUG       FE #142 (m) → JB2
-11:06:28  DEBUG         identify_junction_type: jb_id=2 n_fe=1 slab=True dirs=['m'] cz_fe=['short'] cz_se=['border']
-11:06:28  INFO        JB2: Tv2-13           FEs: [142]  [ok]
-11:06:28  DEBUG              Note: T-Stoß: Wand trifft Decke(SE) in der Mitte (Tv2-13)
-11:06:28  INFO        Deduplizierung: 1 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
-11:06:28  INFO      ============================================================
-11:06:28  INFO      ✓ 1 Stoßstellen gefunden
-11:06:28  INFO      ✓ Typen: {'Tv2-13': 1}
-11:06:28  INFO      ✓ Debug:    output\debug_junction_analysis.json
-11:06:28  INFO      ✓ Ergebnis: output\junctions_result.json
-11:06:28  INFO      ✓ Log:      output\junction_analysis.log
-11:06:28  INFO      ============================================================
+11:54:30  INFO      ============================================================
+11:54:30  INFO      IFC Junction Analysis  –  2026-03-03T11:54:30
+11:54:30  INFO      ============================================================
+11:54:30  INFO      Lade IFC: ifc-models\Tv2-13.ifc
+11:54:30  INFO      Schema: IFC2X3  |  Elemente: 208 Entitäten
+11:54:30  INFO      Extrahiere Bauteilgeometrie …
+11:54:30  INFO        2 Bauteile geladen, 0 übersprungen.
+11:54:30  INFO      Identifiziere Trennelemente …
+11:54:30  WARNING     Keine Trennelemente via SpaceBoundary → Fallback: alle Wände + Decken
+11:54:30  INFO        2 Trennelemente.
+11:54:30  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
+11:54:30  DEBUG       SE #142: 1 flankierende Elemente
+11:54:30  DEBUG         DD-Normen  n=0.000  u=0.000  v=0.634  (raw n=0.000 u=-0.000 v=-0.951)
+11:54:30  DEBUG       FE #56 (o) → JB4
+11:54:30  DEBUG         identify_junction_type: jb_id=4 n_fe=1 slab=False dirs=['o'] cz_fe=['border'] cz_se=['short']
+11:54:30  INFO        JB4: Tv1-24           FEs: [56]  [ok]
+11:54:30  DEBUG              Note: Tv1-24: Decke trifft Wand(SE) im Rand
+11:54:30  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
+11:54:30  DEBUG       SE #56: 1 flankierende Elemente
+11:54:30  DEBUG         DD-Normen  n=2.366  u=0.000  v=0.000  (raw n=-0.951 u=0.000 v=0.000)
+11:54:30  DEBUG       FE #142 (n) → JB2
+11:54:30  DEBUG         identify_junction_type: jb_id=2 n_fe=1 slab=True dirs=['n'] cz_fe=['short'] cz_se=['border']
+11:54:30  INFO        JB2: Tv1-24           FEs: [142]  [ok]
+11:54:30  DEBUG              Note: Tv1-24: Wand trifft Decke(SE) im Rand
+11:54:30  INFO        Deduplizierung: 1 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
+11:54:30  INFO      ============================================================
+11:54:30  INFO      ✓ 1 Stoßstellen gefunden
+11:54:30  INFO      ✓ Typen: {'Tv1-24': 1}
+11:54:30  INFO      ✓ Debug:    output\debug_junction_analysis.json
+11:54:30  INFO      ✓ Ergebnis: output\junctions_result.json
+11:54:30  INFO      ✓ Log:      output\junction_analysis.log
+11:54:30  INFO      ============================================================
