@@ -1,32 +1,32 @@
-10:19:16  INFO      ============================================================
-10:19:16  INFO      IFC Junction Analysis  –  2026-03-04T10:19:16
-10:19:16  INFO      ============================================================
-10:19:16  INFO      Lade IFC: ifc-models\Lh1-2.ifc
-10:19:16  INFO      Schema: IFC2X3  |  Elemente: 166 Entitäten
-10:19:16  INFO      Extrahiere Bauteilgeometrie …
-10:19:16  INFO        2 Bauteile geladen, 0 übersprungen.
-10:19:16  INFO      Identifiziere Trennelemente …
-10:19:16  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
-10:19:16  INFO        2 Trennelemente.
-10:19:16  INFO      ─── SE #55 (IfcWallStandardCase, WandInstanz) ───
-10:19:16  DEBUG       SE #55: 1 flankierende Elemente
-10:19:16  DEBUG         DD-Normen  n=2.970  u=0.416  v=0.000  (raw n=1.638 u=-1.362 v=0.000)
-10:19:16  DEBUG       FE #125 (m) → JB1
-10:19:16  DEBUG         identify_junction_type: jb_id=1 n_fe=1 slab=False dirs=['m'] cz_fe=['short'] cz_se=['short']
-10:19:16  INFO        JB1: Lh1-2            FEs: [125]  [ok]
-10:19:16  DEBUG              Note: L-Stoß horizontal (Wand–Wand 90°, Ecke)
-10:19:16  INFO      ─── SE #125 (IfcWallStandardCase, WandInstanz) ───
-10:19:16  DEBUG       SE #125: 1 flankierende Elemente
-10:19:16  DEBUG         DD-Normen  n=2.470  u=0.601  v=0.000  (raw n=1.362 u=1.638 v=0.000)
-10:19:16  DEBUG       FE #55 (m) → JB3
-10:19:16  DEBUG         identify_junction_type: jb_id=3 n_fe=1 slab=False dirs=['m'] cz_fe=['short'] cz_se=['short']
-10:19:16  INFO        JB3: Lh1-2            FEs: [55]  [ok]
-10:19:16  DEBUG              Note: L-Stoß horizontal (Wand–Wand 90°, Ecke)
-10:19:16  INFO        Deduplizierung: 1 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
-10:19:16  INFO      ============================================================
-10:19:16  INFO      ✓ 1 Stoßstellen gefunden
-10:19:16  INFO      ✓ Typen: {'Lh1-2': 1}
-10:19:16  INFO      ✓ Debug:    output\test_Lh1-2\debug_junction_analysis.json
-10:19:16  INFO      ✓ Ergebnis: output\test_Lh1-2\junctions_result.json
-10:19:16  INFO      ✓ Log:      output\test_Lh1-2\junction_analysis.log
-10:19:16  INFO      ============================================================
+10:42:50  INFO      ============================================================
+10:42:50  INFO      IFC Junction Analysis  –  2026-03-04T10:42:50
+10:42:50  INFO      ============================================================
+10:42:50  INFO      Lade IFC: ifc-models\Lh1-2.ifc
+10:42:50  INFO      Schema: IFC2X3  |  Elemente: 166 Entitäten
+10:42:50  INFO      Extrahiere Bauteilgeometrie …
+10:42:50  INFO        2 Bauteile geladen, 0 übersprungen.
+10:42:50  INFO      Identifiziere Trennelemente …
+10:42:50  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
+10:42:50  INFO        2 Trennelemente.
+10:42:50  INFO      ─── SE #55 (IfcWallStandardCase, WandInstanz) ───
+10:42:50  DEBUG       SE #55: 1 flankierende Elemente
+10:42:50  DEBUG         DD-Normen  n=2.970  u=0.416  v=0.000  (raw n=1.638 u=-1.362 v=0.000)
+10:42:50  DEBUG       FE #125 (m) → JB1
+10:42:50  DEBUG         identify_junction_type: jb_id=1 n_fe=1 slab=False dirs=['m'] cz_fe=['short'] cz_se=['short']
+10:42:50  INFO        JB1: Lh1-2            FEs: [125]  [ok]
+10:42:50  DEBUG              Note: L-Stoß horizontal (Wand–Wand 90°, Ecke)
+10:42:50  INFO      ─── SE #125 (IfcWallStandardCase, WandInstanz) ───
+10:42:50  DEBUG       SE #125: 1 flankierende Elemente
+10:42:50  DEBUG         DD-Normen  n=2.470  u=0.601  v=0.000  (raw n=1.362 u=1.638 v=0.000)
+10:42:50  DEBUG       FE #55 (m) → JB3
+10:42:50  DEBUG         identify_junction_type: jb_id=3 n_fe=1 slab=False dirs=['m'] cz_fe=['short'] cz_se=['short']
+10:42:50  INFO        JB3: Lh1-2            FEs: [55]  [ok]
+10:42:50  DEBUG              Note: L-Stoß horizontal (Wand–Wand 90°, Ecke)
+10:42:50  INFO        Deduplizierung: 1 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
+10:42:50  INFO      ============================================================
+10:42:50  INFO      ✓ 1 Stoßstellen gefunden
+10:42:50  INFO      ✓ Typen: {'Lh1-2': 1}
+10:42:50  INFO      ✓ Debug:    output\test_Lh1-2\debug_junction_analysis.json
+10:42:50  INFO      ✓ Ergebnis: output\test_Lh1-2\junctions_result.json
+10:42:50  INFO      ✓ Log:      output\test_Lh1-2\junction_analysis.log
+10:42:50  INFO      ============================================================

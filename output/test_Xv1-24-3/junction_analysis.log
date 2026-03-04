@@ -1,43 +1,43 @@
-10:19:25  INFO      ============================================================
-10:19:25  INFO      IFC Junction Analysis  –  2026-03-04T10:19:25
-10:19:25  INFO      ============================================================
-10:19:25  INFO      Lade IFC: ifc-models\Xv1-24-3.ifc
-10:19:25  INFO      Schema: IFC2X3  |  Elemente: 229 Entitäten
-10:19:25  INFO      Extrahiere Bauteilgeometrie …
-10:19:25  INFO        3 Bauteile geladen, 0 übersprungen.
-10:19:25  INFO      Identifiziere Trennelemente …
-10:19:25  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
-10:19:25  INFO        3 Trennelemente.
-10:19:25  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
-10:19:25  DEBUG       SE #142: 2 flankierende Elemente
-10:19:25  DEBUG         DD-Normen  n=1.907  u=0.075  v=0.000  (raw n=1.051 u=-0.299 v=0.000)
-10:19:25  DEBUG       FE #56 (o) → JB2
-10:19:25  DEBUG         DD-Normen  n=1.907  u=0.075  v=0.000  (raw n=-1.051 u=-0.299 v=-0.000)
-10:19:25  DEBUG       FE #187 (o) → JB2
-10:19:25  DEBUG         identify_junction_type: jb_id=2 n_fe=2 slab=False dirs=['o', 'o'] cz_fe=['short', 'short'] cz_se=['short', 'short']
-10:19:25  INFO        JB2: Xv1-24-3         FEs: [56, 187]  [ok]
-10:19:25  DEBUG              Note: Xv1-24-3: Wand(SE) durch Mitte, Decken auf gegenüberl. n-Seiten
-10:19:25  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
-10:19:25  DEBUG       SE #56: 1 flankierende Elemente
-10:19:25  DEBUG         DD-Normen  n=0.744  u=0.000  v=0.678  (raw n=0.299 u=0.000 v=1.051)
-10:19:25  DEBUG       FE #142 (n) → JB6
-10:19:25  DEBUG         identify_junction_type: jb_id=6 n_fe=1 slab=True dirs=['n'] cz_fe=['short'] cz_se=['short']
-10:19:25  INFO        JB6: Lv1-2            FEs: [142]  [ok]
-10:19:25  DEBUG              Note: L-Stoß: Wand–Decke, Seite
-10:19:25  INFO      ─── SE #187 (IfcSlab, Floor:DeckenInstanz:317654) ───
-10:19:25  DEBUG       SE #187: 1 flankierende Elemente
-10:19:25  DEBUG         DD-Normen  n=0.744  u=0.000  v=0.678  (raw n=0.299 u=-0.000 v=-1.051)
-10:19:25  DEBUG       FE #142 (n) → JB4
-10:19:25  DEBUG         identify_junction_type: jb_id=4 n_fe=1 slab=True dirs=['n'] cz_fe=['short'] cz_se=['short']
-10:19:25  INFO        JB4: Lv1-2            FEs: [142]  [ok]
-10:19:25  DEBUG              Note: L-Stoß: Wand–Decke, Seite
-10:19:25  INFO        Teilmenge entfernt: {56, 142} ⊂ {56, 187, 142}
-10:19:25  INFO        Teilmenge entfernt: {187, 142} ⊂ {56, 187, 142}
-10:19:25  INFO        Deduplizierung: 2 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
-10:19:25  INFO      ============================================================
-10:19:25  INFO      ✓ 1 Stoßstellen gefunden
-10:19:25  INFO      ✓ Typen: {'Xv1-24-3': 1}
-10:19:25  INFO      ✓ Debug:    output\test_Xv1-24-3\debug_junction_analysis.json
-10:19:25  INFO      ✓ Ergebnis: output\test_Xv1-24-3\junctions_result.json
-10:19:25  INFO      ✓ Log:      output\test_Xv1-24-3\junction_analysis.log
-10:19:25  INFO      ============================================================
+10:42:57  INFO      ============================================================
+10:42:57  INFO      IFC Junction Analysis  –  2026-03-04T10:42:57
+10:42:57  INFO      ============================================================
+10:42:57  INFO      Lade IFC: ifc-models\Xv1-24-3.ifc
+10:42:57  INFO      Schema: IFC2X3  |  Elemente: 229 Entitäten
+10:42:57  INFO      Extrahiere Bauteilgeometrie …
+10:42:57  INFO        3 Bauteile geladen, 0 übersprungen.
+10:42:57  INFO      Identifiziere Trennelemente …
+10:42:57  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
+10:42:57  INFO        3 Trennelemente.
+10:42:57  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
+10:42:57  DEBUG       SE #142: 2 flankierende Elemente
+10:42:57  DEBUG         DD-Normen  n=1.907  u=0.075  v=0.000  (raw n=1.051 u=-0.299 v=0.000)
+10:42:57  DEBUG       FE #56 (o) → JB2
+10:42:57  DEBUG         DD-Normen  n=1.907  u=0.075  v=0.000  (raw n=-1.051 u=-0.299 v=-0.000)
+10:42:57  DEBUG       FE #187 (o) → JB2
+10:42:57  DEBUG         identify_junction_type: jb_id=2 n_fe=2 slab=False dirs=['o', 'o'] cz_fe=['short', 'short'] cz_se=['short', 'short']
+10:42:57  INFO        JB2: Xv1-24-3         FEs: [56, 187]  [ok]
+10:42:57  DEBUG              Note: Xv1-24-3: Wand(SE) durch Mitte, Decken auf gegenüberl. n-Seiten
+10:42:57  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
+10:42:57  DEBUG       SE #56: 1 flankierende Elemente
+10:42:57  DEBUG         DD-Normen  n=0.744  u=0.000  v=0.678  (raw n=0.299 u=0.000 v=1.051)
+10:42:57  DEBUG       FE #142 (n) → JB6
+10:42:57  DEBUG         identify_junction_type: jb_id=6 n_fe=1 slab=True dirs=['n'] cz_fe=['short'] cz_se=['short']
+10:42:57  INFO        JB6: Lv1-2            FEs: [142]  [ok]
+10:42:57  DEBUG              Note: L-Stoß: Wand–Decke, Seite
+10:42:57  INFO      ─── SE #187 (IfcSlab, Floor:DeckenInstanz:317654) ───
+10:42:57  DEBUG       SE #187: 1 flankierende Elemente
+10:42:57  DEBUG         DD-Normen  n=0.744  u=0.000  v=0.678  (raw n=0.299 u=-0.000 v=-1.051)
+10:42:57  DEBUG       FE #142 (n) → JB4
+10:42:57  DEBUG         identify_junction_type: jb_id=4 n_fe=1 slab=True dirs=['n'] cz_fe=['short'] cz_se=['short']
+10:42:57  INFO        JB4: Lv1-2            FEs: [142]  [ok]
+10:42:57  DEBUG              Note: L-Stoß: Wand–Decke, Seite
+10:42:57  INFO        Teilmenge entfernt: {56, 142} ⊂ {56, 187, 142}
+10:42:57  INFO        Teilmenge entfernt: {187, 142} ⊂ {56, 187, 142}
+10:42:57  INFO        Deduplizierung: 2 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
+10:42:57  INFO      ============================================================
+10:42:57  INFO      ✓ 1 Stoßstellen gefunden
+10:42:57  INFO      ✓ Typen: {'Xv1-24-3': 1}
+10:42:57  INFO      ✓ Debug:    output\test_Xv1-24-3\debug_junction_analysis.json
+10:42:57  INFO      ✓ Ergebnis: output\test_Xv1-24-3\junctions_result.json
+10:42:57  INFO      ✓ Log:      output\test_Xv1-24-3\junction_analysis.log
+10:42:57  INFO      ============================================================

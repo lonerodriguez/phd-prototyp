@@ -1,7 +1,7 @@
 {
   "meta": {
     "ifc_path": "ifc-models\\Xh1-24-3.ifc",
-    "timestamp": "2026-03-04T10:19:23",
+    "timestamp": "2026-03-04T10:42:56",
     "constants": {
       "MAX_DISTANCE": 0.3,
       "JB_OFFSET_THIN": 0.3,

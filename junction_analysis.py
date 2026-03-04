@@ -1050,6 +1050,13 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
 
     # ── Gemischt Wand + Decke ──
     if "o" in dir_set:
+        # Tv2-1:3: SE=Decke, FEs = Wand(n, short) + Decke(o, border/short)
+        # Wand berührt Decken-Stirnfläche; zweite Decke liegt in v-Richtung daneben.
+        if slab and "n" in dir_set:
+            n_idx = next((i for i, d in enumerate(dirs) if d == "n"), None)
+            if n_idx is not None and cz_fe[n_idx] == "short":
+                return ("Tv2-1:3",
+                        "Tv2-1:3: SE-Decke + parallele Wand(n, short) + Nachbardecke(o)")
         if "middle" in cz_fe:
             return ("Tv2-13",  "Tv2-13: Decke trifft Wandmitte")
         return ("Tv1-24",      "Tv1-24: gemischt Wand+Decke")
@@ -1234,19 +1241,17 @@ def run(ifc_path: str, out_dir: str) -> None:
             seen_keys[key] = jr
         else:
             existing = seen_keys[key]
-            def score(r: JunctionResult):
-                conf        = CONF_PRIO.get(r.confidence, 9)
-                jprio       = JUNCTION_PRIO.get(r.junction_type, 5)
+            def score(r: JunctionResult) -> tuple:
+                conf         = CONF_PRIO.get(r.confidence, 9)
+                jprio        = JUNCTION_PRIO.get(r.junction_type, 5)
                 middle_bonus = 0 if r.jb_id in (2, 5) else 1
-                n_fe_bonus  = -len(r.fe_ifc_ids)   # mehr FEs = informativer
-                # Für Tv-Junctions: Slab-Perspektive bevorzugen, da der Slab
-                # alle angrenzenden Wände gleichzeitig sieht → korrektere Klassifikation.
-                # Für Th-Junctions: Wand-Perspektive ist meist besser.
-                jt = r.junction_type
-                slab_is_se = "Slab" in r.se_type
-                # Slab-Perspektive bevorzugen für Tv* und Xv2* (Decke ist SE)
-                # Wand-Perspektive bevorzugen für Th*, Xh*, Xv1-24-3 (Wand ist SE)
-                if jt.startswith("Tv") or jt in ("Xv2-13-4", "Xv2-1:3-4"):
+                n_fe_bonus   = -len(r.fe_ifc_ids)
+                jtype        = r.junction_type          # ← war fehlend → stiller Bug!
+                slab_is_se   = "Slab" in r.se_type
+                # Slab-SE bevorzugen für Tv* (außer Tv2-1:3) und Xv2*
+                # Wand-SE bevorzugen für Th*, Xh*, Xv1-24-3, Tv2-1:3
+                if (jtype.startswith("Tv") and jtype != "Tv2-1:3") or \
+                   jtype in ("Xv2-13-4", "Xv2-1:3-4"):
                     slab_bonus = 0 if slab_is_se else 1
                 else:
                     slab_bonus = 1 if slab_is_se else 0

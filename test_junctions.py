@@ -77,8 +77,36 @@ def get_detected_type(result_json: dict) -> str | None:
     return junctions[0].get("junction_type")
 
 
+def extract_prededup_from_log(out_subdir: pathlib.Path) -> list:
+    """Liest das Log und extrahiert alle Junctions VOR Dedup."""
+    log_file = out_subdir / "junction_analysis.log"
+    if not log_file.exists():
+        return []
+    entries = []
+    import re
+    pattern = re.compile(r"JB(\d+): (\S+)\s+FEs: \[([^\]]*)\]")
+    se_pattern = re.compile(r"SE #(\d+) \((\S+),")
+    current_se = None
+    with open(log_file, encoding="utf-8") as f:
+        for line in f:
+            m_se = se_pattern.search(line)
+            if m_se:
+                current_se = {"id": int(m_se.group(1)), "type": m_se.group(2)}
+            m_jb = pattern.search(line)
+            if m_jb and current_se:
+                fe_ids = [int(x.strip()) for x in m_jb.group(3).split(",") if x.strip()]
+                entries.append({
+                    "se_id":   current_se["id"],
+                    "se_type": current_se["type"],
+                    "jb_id":   int(m_jb.group(1)),
+                    "type":    m_jb.group(2),
+                    "fe_ids":  fe_ids,
+                })
+    return entries
+
 def build_debug_info(model_name: str, expected: str, detected: str,
-                     result_json: dict, debug_json: dict | None) -> dict:
+                     result_json: dict, debug_json: dict | None,
+                     out_subdir: pathlib.Path) -> dict:
     """Baut strukturierte Debug-Info für einen fehlgeschlagenen Test."""
     junctions = result_json.get("junctions", []) if result_json else []
 
@@ -87,26 +115,12 @@ def build_debug_info(model_name: str, expected: str, detected: str,
         "expected": expected,
         "detected": detected,
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-        "all_junctions_before_dedup": [],
+        "all_junctions_PRE_dedup": extract_prededup_from_log(out_subdir),
+        "winning_junction_post_dedup": junctions,
         "junction_boxes_with_elements": [],
         "elements": [],
         "analysis_hints": [],
     }
-
-    # Alle gefundenen Junctions
-    info["all_junctions_before_dedup"] = [
-        {
-            "se_id":    j.get("se_ifc_id"),
-            "se_type":  j.get("se_type"),
-            "jb_id":    j.get("jb_id"),
-            "type":     j.get("junction_type"),
-            "fe_ids":   j.get("fe_ifc_ids"),
-            "fe_dirs":  j.get("element_directions"),
-            "fe_cz":    j.get("connection_zones"),
-            "notes":    j.get("notes"),
-        }
-        for j in junctions
-    ]
 
     if debug_json:
         # Elemente
@@ -176,10 +190,16 @@ def build_debug_info(model_name: str, expected: str, detected: str,
             "v_signs":  v_signs,
         })
 
+    if not info["elements"] and debug_json:
+        # Kein Element geladen → IFC-Typen in der Datei prüfen
+        hints.append({
+            "WARNING": "Keine Elemente geladen! Prüfe ob das Modell IfcMember/IfcPlate "
+                       "statt IfcWall/IfcSlab verwendet. "
+                       "Füge den IFC-Typ zu RELEVANT_IFC_TYPES hinzu falls nötig.",
+            "sep_elements_found": debug_json.get("sep_elements", []),
+        })
+
     return info
-
-
-# ---------------------------------------------------------------------------
 # Hauptprogramm
 # ---------------------------------------------------------------------------
 def main():
@@ -228,7 +248,7 @@ def main():
                     debug_json = json.load(f)
 
             debug_info = build_debug_info(
-                model_name, expected_type, detected, result_json or {}, debug_json
+                model_name, expected_type, detected, result_json or {}, debug_json, out_sub
             )
 
             debug_out = OUT_DIR / f"debug_FAIL_{model_name}.json"
