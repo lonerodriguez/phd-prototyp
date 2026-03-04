@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "ifc_path": "ifc-models\\Th2-1-4.ifc",
+    "timestamp": "2026-03-04T10:19:19"
+  },
+  "summary": {
+    "total_junctions": 1,
+    "separating_elements": 3,
+    "junction_type_counts": {
+      "Th2-1-4": 1
+    }
+  },
+  "junctions": [
+    {
+      "se_ifc_id": 55,
+      "se_type": "IfcWallStandardCase",
+      "jb_id": 1,
+      "junction_type": "Th2-1-4",
+      "fe_ifc_ids": [
+        125,
+        149
+      ],
+      "element_directions": {
+        "125": "m",
+        "149": "m"
+      },
+      "connection_zones": {
+        "125": "short",
+        "149": "short"
+      },
+      "confidence": "ok",
+      "notes": "Th2-1-4: 2 m-Elemente auf gegenüberl. n-Seiten"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "ifc_path": "ifc-models\\Tv2-13.ifc",
+    "timestamp": "2026-03-04T10:19:22"
+  },
+  "summary": {
+    "total_junctions": 1,
+    "separating_elements": 2,
+    "junction_type_counts": {
+      "Tv2-13": 1
+    }
+  },
+  "junctions": [
+    {
+      "se_ifc_id": 56,
+      "se_type": "IfcSlab",
+      "jb_id": 2,
+      "junction_type": "Tv2-13",
+      "fe_ifc_ids": [
+        142
+      ],
+      "element_directions": {
+        "142": "m"
+      },
+      "connection_zones": {
+        "142": "short"
+      },
+      "confidence": "ok",
+      "notes": "T-Stoß: Wand trifft Decke(SE) in der Mitte (Tv2-13)"
+    }
+  ]
+}

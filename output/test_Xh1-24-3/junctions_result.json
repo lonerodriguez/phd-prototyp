@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "ifc_path": "ifc-models\\Xh1-24-3.ifc",
+    "timestamp": "2026-03-04T10:19:23"
+  },
+  "summary": {
+    "total_junctions": 1,
+    "separating_elements": 3,
+    "junction_type_counts": {
+      "Xh1-24-3": 1
+    }
+  },
+  "junctions": [
+    {
+      "se_ifc_id": 55,
+      "se_type": "IfcWallStandardCase",
+      "jb_id": 2,
+      "junction_type": "Xh1-24-3",
+      "fe_ifc_ids": [
+        125,
+        149
+      ],
+      "element_directions": {
+        "125": "m",
+        "149": "m"
+      },
+      "connection_zones": {
+        "125": "short",
+        "149": "short"
+      },
+      "confidence": "ok",
+      "notes": "Xh1-24-3: 2 Querwände durch Wandmitte (horizontal X)"
+    }
+  ]
+}

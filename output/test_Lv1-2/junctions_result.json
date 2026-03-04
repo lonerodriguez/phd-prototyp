@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "ifc_path": "ifc-models\\Lv1-2.ifc",
+    "timestamp": "2026-03-04T10:19:17"
+  },
+  "summary": {
+    "total_junctions": 1,
+    "separating_elements": 2,
+    "junction_type_counts": {
+      "Lv1-2": 1
+    }
+  },
+  "junctions": [
+    {
+      "se_ifc_id": 142,
+      "se_type": "IfcWallStandardCase",
+      "jb_id": 4,
+      "junction_type": "Lv1-2",
+      "fe_ifc_ids": [
+        56
+      ],
+      "element_directions": {
+        "56": "o"
+      },
+      "connection_zones": {
+        "56": "short"
+      },
+      "confidence": "ok",
+      "notes": "L-Stoß vertikal (Wand–Decke)"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "ifc_path": "ifc-models\\Th1-2-4.ifc",
+    "timestamp": "2026-03-04T10:19:18"
+  },
+  "summary": {
+    "total_junctions": 1,
+    "separating_elements": 3,
+    "junction_type_counts": {
+      "Th1-2-4": 1
+    }
+  },
+  "junctions": [
+    {
+      "se_ifc_id": 55,
+      "se_type": "IfcWallStandardCase",
+      "jb_id": 1,
+      "junction_type": "Th1-2-4",
+      "fe_ifc_ids": [
+        124,
+        149
+      ],
+      "element_directions": {
+        "124": "n",
+        "149": "m"
+      },
+      "connection_zones": {
+        "124": "border",
+        "149": "short"
+      },
+      "confidence": "ok",
+      "notes": "Th1-2-4: paralleles(n) + Querwand(m), CZ=border"
+    }
+  ]
+}

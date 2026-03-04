@@ -1,13 +1,13 @@
 {
   "meta": {
-    "ifc_path": "ifc-models\\Tv2-1-3.ifc",
-    "timestamp": "2026-03-04T10:07:05"
+    "ifc_path": "ifc-models\\Xv2-1-3-4.ifc",
+    "timestamp": "2026-03-04T10:19:25"
   },
   "summary": {
     "total_junctions": 1,
-    "separating_elements": 3,
+    "separating_elements": 4,
     "junction_type_counts": {
-      "Tv1-24": 1
+      "Xv2-1:3-4": 1
     }
   },
   "junctions": [
@@ -15,21 +15,24 @@
       "se_ifc_id": 56,
       "se_type": "IfcSlab",
       "jb_id": 6,
-      "junction_type": "Tv1-24",
+      "junction_type": "Xv2-1:3-4",
       "fe_ifc_ids": [
         142,
+        210,
         187
       ],
       "element_directions": {
         "142": "n",
+        "210": "n",
         "187": "o"
       },
       "connection_zones": {
         "142": "short",
+        "210": "short",
         "187": "border"
       },
       "confidence": "ok",
-      "notes": "Tv1-24: gemischt Wand+Decke"
+      "notes": "X-Stoß: Decke(SE) + 2 Wände + 1 Decke"
     }
   ]
 }

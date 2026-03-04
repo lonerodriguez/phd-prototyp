@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "ifc_path": "ifc-models\\Lh1-2.ifc",
+    "timestamp": "2026-03-04T10:19:16"
+  },
+  "summary": {
+    "total_junctions": 1,
+    "separating_elements": 2,
+    "junction_type_counts": {
+      "Lh1-2": 1
+    }
+  },
+  "junctions": [
+    {
+      "se_ifc_id": 55,
+      "se_type": "IfcWallStandardCase",
+      "jb_id": 1,
+      "junction_type": "Lh1-2",
+      "fe_ifc_ids": [
+        125
+      ],
+      "element_directions": {
+        "125": "m"
+      },
+      "connection_zones": {
+        "125": "short"
+      },
+      "confidence": "ok",
+      "notes": "L-Stoß horizontal (Wand–Wand 90°, Ecke)"
+    }
+  ]
+}

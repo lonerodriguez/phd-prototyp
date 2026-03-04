@@ -1,0 +1,43 @@
+10:19:22  INFO      ============================================================
+10:19:22  INFO      IFC Junction Analysis  –  2026-03-04T10:19:22
+10:19:22  INFO      ============================================================
+10:19:22  INFO      Lade IFC: ifc-models\Tv2-1-4.ifc
+10:19:22  INFO      Schema: IFC2X3  |  Elemente: 233 Entitäten
+10:19:22  INFO      Extrahiere Bauteilgeometrie …
+10:19:22  INFO        3 Bauteile geladen, 0 übersprungen.
+10:19:22  INFO      Identifiziere Trennelemente …
+10:19:22  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
+10:19:22  INFO        3 Trennelemente.
+10:19:22  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
+10:19:22  DEBUG       SE #142: 1 flankierende Elemente
+10:19:22  DEBUG         DD-Normen  n=1.360  u=0.000  v=0.634  (raw n=0.750 u=-0.000 v=-0.951)
+10:19:22  DEBUG       FE #56 (o) → JB4
+10:19:22  DEBUG         identify_junction_type: jb_id=4 n_fe=1 slab=False dirs=['o'] cz_fe=['short'] cz_se=['short']
+10:19:22  INFO        JB4: Lv1-2            FEs: [56]  [ok]
+10:19:22  DEBUG              Note: L-Stoß vertikal (Wand–Decke)
+10:19:22  INFO      ─── SE #190 (IfcWallStandardCase, WandInstanz) ───
+10:19:22  DEBUG       SE #190: 1 flankierende Elemente
+10:19:22  DEBUG         DD-Normen  n=1.360  u=0.000  v=0.638  (raw n=0.750 u=-0.000 v=0.929)
+10:19:22  DEBUG       FE #56 (o) → JB6
+10:19:22  DEBUG         identify_junction_type: jb_id=6 n_fe=1 slab=False dirs=['o'] cz_fe=['short'] cz_se=['short']
+10:19:22  INFO        JB6: Lv1-2            FEs: [56]  [ok]
+10:19:22  DEBUG              Note: L-Stoß vertikal (Wand–Decke)
+10:19:22  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
+10:19:22  DEBUG       SE #56: 2 flankierende Elemente
+10:19:22  DEBUG         DD-Normen  n=2.366  u=0.366  v=0.000  (raw n=-0.951 u=0.750 v=0.000)
+10:19:22  DEBUG       FE #142 (m) → JB3
+10:19:22  DEBUG         DD-Normen  n=2.311  u=0.366  v=0.000  (raw n=0.929 u=0.750 v=0.000)
+10:19:22  DEBUG       FE #190 (m) → JB3
+10:19:22  DEBUG         identify_junction_type: jb_id=3 n_fe=2 slab=True dirs=['m', 'm'] cz_fe=['short', 'short'] cz_se=['short', 'short']
+10:19:22  INFO        JB3: Tv2-1-4          FEs: [142, 190]  [ok]
+10:19:22  DEBUG              Note: Tv2-1-4: 2 m-Elemente auf gegenüberl. n-Seiten
+10:19:22  INFO        Teilmenge entfernt: {56, 142} ⊂ {56, 142, 190}
+10:19:22  INFO        Teilmenge entfernt: {56, 190} ⊂ {56, 142, 190}
+10:19:22  INFO        Deduplizierung: 2 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
+10:19:22  INFO      ============================================================
+10:19:22  INFO      ✓ 1 Stoßstellen gefunden
+10:19:22  INFO      ✓ Typen: {'Tv2-1-4': 1}
+10:19:22  INFO      ✓ Debug:    output\test_Tv2-1-4\debug_junction_analysis.json
+10:19:22  INFO      ✓ Ergebnis: output\test_Tv2-1-4\junctions_result.json
+10:19:22  INFO      ✓ Log:      output\test_Tv2-1-4\junction_analysis.log
+10:19:22  INFO      ============================================================

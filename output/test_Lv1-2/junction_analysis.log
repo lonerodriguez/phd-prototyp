@@ -1,0 +1,32 @@
+10:19:17  INFO      ============================================================
+10:19:17  INFO      IFC Junction Analysis  –  2026-03-04T10:19:17
+10:19:17  INFO      ============================================================
+10:19:17  INFO      Lade IFC: ifc-models\Lv1-2.ifc
+10:19:17  INFO      Schema: IFC2X3  |  Elemente: 208 Entitäten
+10:19:17  INFO      Extrahiere Bauteilgeometrie …
+10:19:17  INFO        2 Bauteile geladen, 0 übersprungen.
+10:19:17  INFO      Identifiziere Trennelemente …
+10:19:17  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
+10:19:17  INFO        2 Trennelemente.
+10:19:17  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
+10:19:17  DEBUG       SE #142: 1 flankierende Elemente
+10:19:17  DEBUG         DD-Normen  n=0.907  u=0.000  v=0.634  (raw n=0.500 u=-0.000 v=-0.951)
+10:19:17  DEBUG       FE #56 (o) → JB4
+10:19:17  DEBUG         identify_junction_type: jb_id=4 n_fe=1 slab=False dirs=['o'] cz_fe=['short'] cz_se=['short']
+10:19:17  INFO        JB4: Lv1-2            FEs: [56]  [ok]
+10:19:17  DEBUG              Note: L-Stoß vertikal (Wand–Decke)
+10:19:17  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
+10:19:17  DEBUG       SE #56: 1 flankierende Elemente
+10:19:17  DEBUG         DD-Normen  n=2.366  u=0.000  v=0.322  (raw n=-0.951 u=-0.000 v=0.500)
+10:19:17  DEBUG       FE #142 (n) → JB6
+10:19:17  DEBUG         identify_junction_type: jb_id=6 n_fe=1 slab=True dirs=['n'] cz_fe=['short'] cz_se=['short']
+10:19:17  INFO        JB6: Lv1-2            FEs: [142]  [ok]
+10:19:17  DEBUG              Note: L-Stoß: Wand–Decke, Seite
+10:19:17  INFO        Deduplizierung: 1 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
+10:19:17  INFO      ============================================================
+10:19:17  INFO      ✓ 1 Stoßstellen gefunden
+10:19:17  INFO      ✓ Typen: {'Lv1-2': 1}
+10:19:17  INFO      ✓ Debug:    output\test_Lv1-2\debug_junction_analysis.json
+10:19:17  INFO      ✓ Ergebnis: output\test_Lv1-2\junctions_result.json
+10:19:17  INFO      ✓ Log:      output\test_Lv1-2\junction_analysis.log
+10:19:17  INFO      ============================================================
