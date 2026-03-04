@@ -175,7 +175,6 @@ class JunctionResult:
     connection_zones:  dict
     confidence:        str = "ok"  # "ok" | "warn" | "error"
     notes:             str = ""
-    type_matrix: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -188,7 +187,6 @@ class JunctionResult:
             "connection_zones":   self.connection_zones,
             "confidence":         self.confidence,
             "notes":              self.notes,
-            "type_matrix":        self.type_matrix,
         }
 
 
@@ -265,56 +263,36 @@ def compute_bbox_from_geom(ifc_element, geom_settings) -> Optional[BoundingBox]:
 
 
 def determine_element_normal(bbox: BoundingBox,
-                             mat4: np.ndarray,
-                             is_slab: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                              mat4: np.ndarray,
+                              is_slab: bool) -> tuple:
     """
-    Bestimmt n_vec, u_vec, v_vec aus der Platzierungsmatrix, rotationsrobust.
-
-    - Lokale Achsen kommen aus mat4
-    - "Dünnste" Richtung wird über Projektion der 8 AABB-Ecken bestimmt
-      (nicht über dot(size, axis), das ist bei Rotationen falsch).
+    Bestimmt n_vec, u_vec, v_vec aus der Platzierungsmatrix.
+    n_vec = Achse mit kleinster Bauteilausdehnung (= Dickenrichtung).
+    Rotationsunabhängig.
     """
+    # Lokale Achsen aus Transformationsmatrix
     x_ax = vec_normalize(mat4[:3, 0])
     y_ax = vec_normalize(mat4[:3, 1])
     z_ax = vec_normalize(mat4[:3, 2])
     axes = [x_ax, y_ax, z_ax]
 
-    # 8 Ecken der Welt-AABB
-    mn, mx = bbox.min_pt, bbox.max_pt
-    corners = np.array([
-        [mn[0], mn[1], mn[2]],
-        [mn[0], mn[1], mx[2]],
-        [mn[0], mx[1], mn[2]],
-        [mn[0], mx[1], mx[2]],
-        [mx[0], mn[1], mn[2]],
-        [mx[0], mn[1], mx[2]],
-        [mx[0], mx[1], mn[2]],
-        [mx[0], mx[1], mx[2]],
-    ], dtype=float)
+    size = bbox.max_pt - bbox.min_pt
 
-    origin = (mn + mx) * 0.5
-
-    # Extents entlang lokaler Achsen
-    extents = []
-    for ax in axes:
-        p = np.dot(corners - origin, ax)
-        extents.append(float(p.max() - p.min()))
-    extents = np.array(extents)
-
-    thin_idx = int(np.argmin(extents))
+    # Projiziere Ausdehnung auf lokale Achsen
+    projections = [abs(np.dot(size, ax)) for ax in axes]
+    thin_idx    = int(np.argmin(projections))   # dünnste Richtung = Normale
     fat_indices = [i for i in range(3) if i != thin_idx]
 
     n_vec = axes[thin_idx]
 
-    # Konvention: Slabs nach oben
+    # Konvention: Decken zeigen nach oben
     if is_slab and n_vec[2] < 0:
         n_vec = -n_vec
 
-    # u_vec = längste tangentiale Richtung (unter den "fetten" Achsen)
-    u_idx = fat_indices[int(np.argmax(extents[fat_indices]))]
+    # u_vec = längste tangentiale Richtung
+    u_idx = fat_indices[int(np.argmax([projections[i] for i in fat_indices]))]
     u_vec = vec_normalize(axes[u_idx])
-
-    # Orthogonalisieren
+    # orthogonalisieren (Gram-Schmidt)
     u_vec = vec_normalize(u_vec - np.dot(u_vec, n_vec) * n_vec)
     v_vec = vec_normalize(np.cross(n_vec, u_vec))
 
@@ -536,40 +514,29 @@ def find_flanking_elements(se: BuildingElement,
 # ===========================================================================
 
 def assign_element_directions(se: BuildingElement,
-                              flanking: list[BuildingElement]) -> None:
+                               flanking: list[BuildingElement]) -> None:
     """
-    Weist n/m/o zu.
+    Weist n/m/o (Richtungsbezeichnung) zu.
 
-    - 'o' = Slab/Roof (horizontaler Plattentyp)
-    - Wenn SE eine Wand ist: n/m anhand Parallelität der Normalen (wie bisher)
-    - Wenn SE ein Slab ist: n/m anhand Ausrichtung der Wand in der Slab-Ebene
-      (Vergleich fe.u_vec mit se.u_vec und se.v_vec).
+    Priorität:
+    1. IfcSlab (immer 'o', unabhängig von n_vec)
+    2. n_vec[2] > ANGLE_TOL → 'o' (z.B. gedrehte Decke)
+    3. dot(se.n_vec, fe.n_vec) → 'n' (parallel) oder 'm' (90°)
+
+    Wände (IfcWall*) sind NIEMALS 'o', auch wenn ihr u_vec zufällig
+    in Z-Richtung zeigt.
     """
-    se_is_slab = (se.ifc_type in ("IfcSlab", "IfcRoof")) or (abs(se.n_vec[2]) > ANGLE_TOL)
-
-    # SE selbst: für Debug nicht so wichtig, aber konsistent
-    se.elem_direction = "o" if se_is_slab else "n"
+    se.elem_direction = "n"
 
     for fe in flanking:
-        fe_is_slab = fe.ifc_type in ("IfcSlab", "IfcRoof")
-        if fe_is_slab:
+        is_slab_type = fe.ifc_type in ("IfcSlab", "IfcRoof")
+        n_vec_vertical = abs(fe.n_vec[2]) > ANGLE_TOL
+
+        if is_slab_type or (n_vec_vertical and "Wall" not in fe.ifc_type):
             fe.elem_direction = "o"
-            continue
-
-        # --- Fall A: SE ist Slab -> Wände in n/m nach In-Plane-Richtung klassifizieren
-        if se_is_slab:
-            # Wand-Längsrichtung in der Deckenebene einordnen:
-            # (fe.u_vec ist i.d.R. die lange Richtung der Wand)
-            a_u = abs(float(np.dot(fe.u_vec, se.u_vec)))
-            a_v = abs(float(np.dot(fe.u_vec, se.v_vec)))
-
-            # näher an se.u_vec => 'n', näher an se.v_vec => 'm'
-            fe.elem_direction = "n" if a_u >= a_v else "m"
-            continue
-
-        # --- Fall B: SE ist Wand (dein bisheriges Prinzip)
-        cos_n = abs(float(np.dot(se.n_vec, fe.n_vec)))
-        fe.elem_direction = "n" if cos_n > ANGLE_TOL else "m"
+        else:
+            cos_n = abs(float(np.dot(se.n_vec, fe.n_vec)))
+            fe.elem_direction = "n" if cos_n > ANGLE_TOL else "m"
 
 
 # ===========================================================================
@@ -739,85 +706,48 @@ def assign_flanking_to_jbs(se: BuildingElement,
 # SCHRITT 8 – CONNECTION ZONES
 # ===========================================================================
 
-def _aabb_closest_point(p: np.ndarray, aabb_min: np.ndarray, aabb_max: np.ndarray) -> np.ndarray:
-    """Nächster Punkt in AABB zu Punkt p."""
-    return np.minimum(np.maximum(p, aabb_min), aabb_max)
-
-def _aabb_to_aabb_closest_point(visitor: BoundingBox, host: BoundingBox) -> np.ndarray:
-    """
-    Liefert einen Punkt auf/nahe dem Host-AABB, der dem Visitor-AABB am nächsten ist.
-    Robust genug für CoZo-Heuristik.
-    """
-    # Nimm den Visitor-Center und projiziere ihn auf Host-AABB
-    return _aabb_closest_point(visitor.center(), host.min_pt, host.max_pt)
-
 def get_connection_zone(host: BuildingElement,
-                        visitor: BuildingElement) -> str:
+                         visitor: BuildingElement) -> str:
     """
-    Rotationsrobuste Connection Zone (AABB-basiert, aber stabil):
-      - Host-Extents werden aus 8 Ecken projiziert
-      - Kontaktpunkt: nächster Punkt Visitor->Host (Host-AABB)
-      - short/border/middle im lokalen KOS des Host
+    Bestimmt, in welcher Zone das 'visitor'-Element auf das 'host'-Element trifft.
+    Alle Berechnungen im lokalen KOS von 'host' → rotationsunabhängig.
+
+    Zonen (nach Paper Abb. 5.39–5.41):
+        "short"  – Stirnfläche (Dickenrichtung)
+        "border" – Randstreifen auf der Hauptfläche (0.5 m breit)
+        "middle" – Mittelfläche
     """
     origin = host.bbox.center()
 
-    # 8 Ecken der Host-AABB
-    mn, mx = host.bbox.min_pt, host.bbox.max_pt
-    corners = np.array([
-        [mn[0], mn[1], mn[2]],
-        [mn[0], mn[1], mx[2]],
-        [mn[0], mx[1], mn[2]],
-        [mn[0], mx[1], mx[2]],
-        [mx[0], mn[1], mn[2]],
-        [mx[0], mn[1], mx[2]],
-        [mx[0], mx[1], mn[2]],
-        [mx[0], mx[1], mx[2]],
-    ], dtype=float)
-
-    # Projektionsgrenzen des Host im lokalen KOS
-    def proj_range(axis: np.ndarray) -> tuple[float, float]:
+    # Projektionsgrenzen des Host auf lokale Achsen
+    corners = np.array([host.bbox.min_pt, host.bbox.max_pt])
+    def proj_range(axis):
         p = np.dot(corners - origin, axis)
-        return float(p.min()), float(p.max())
+        return p.min(), p.max()
 
     n_min, n_max = proj_range(host.n_vec)
     u_min, u_max = proj_range(host.u_vec)
     v_min, v_max = proj_range(host.v_vec)
 
-    # Kontaktpunkt: Visitor -> Host (AABB-Heuristik)
-    contact_world = _aabb_to_aabb_closest_point(visitor.bbox, host.bbox)
-
+    # Nächster Punkt des Visitors zum Host (in Weltkoordinaten)
+    contact_world = np.clip(visitor.bbox.center(),
+                            host.bbox.min_pt, host.bbox.max_pt)
     delta = contact_world - origin
+
     c_n = float(np.dot(delta, host.n_vec))
     c_u = float(np.dot(delta, host.u_vec))
     c_v = float(np.dot(delta, host.v_vec))
 
-    # Parameter
     B = JB_OFFSET_BORDER
 
-    # ---- short? (Stirnfläche in n-Richtung) ----
-    # Nutze absolute Schwelle + kleine relative Komponente
-    n_thick = max(n_max - n_min, GEOM_TOL)
-
-    dist_to_n_min = abs(c_n - n_min)
-    dist_to_n_max = abs(c_n - n_max)
-
-    short_abs = 0.05  # 5 cm als robuste Absolutschwelle
-    short_rel = 0.10 * n_thick
-
-    if min(dist_to_n_min, dist_to_n_max) <= max(short_abs, short_rel):
+    # Auf der Stirnseite (short)?
+    n_thick = n_max - n_min
+    if abs(c_n - n_min) < n_thick * 0.15 or abs(c_n - n_max) < n_thick * 0.15:
         return "short"
 
-    # ---- border? (Randstreifen auf u/v) ----
-    # Borderbreite B, aber wenn Bauteil kleiner als 2B, dann gibt es kein "middle"
-    u_extent = max(u_max - u_min, GEOM_TOL)
-    v_extent = max(v_max - v_min, GEOM_TOL)
-
-    u_border = min(B, 0.49 * u_extent)
-    v_border = min(B, 0.49 * v_extent)
-
-    on_u_border = (c_u <= u_min + u_border) or (c_u >= u_max - u_border)
-    on_v_border = (c_v <= v_min + v_border) or (c_v >= v_max - v_border)
-
+    # Im Randbereich?
+    on_u_border = (c_u < u_min + B or c_u > u_max - B)
+    on_v_border = (c_v < v_min + B or c_v > v_max - B)
     if on_u_border or on_v_border:
         return "border"
 
@@ -827,41 +757,6 @@ def get_connection_zone(host: BuildingElement,
 # ===========================================================================
 # SCHRITT 9 – STOΒSTELLENTYP IDENTIFIZIEREN
 # ===========================================================================
-def build_type_matrix(jb: JunctionBox) -> dict:
-    """
-    Baut eine Matrix wie im Stoßstellentypen-Bild:
-    Zeilen: SE zuerst, danach FEs
-    Spalten: El.Di., CoZo (auf SE), CoZo (auf FE)
-    """
-    se = jb.se
-    fes = jb.flanking_elements()
-
-    # Sortierung: erst o, dann n, dann m (und stabil nach ID)
-    dir_order = {"o": 0, "n": 1, "m": 2, "": 9}
-    fes_sorted = sorted(
-        fes,
-        key=lambda fe: (dir_order.get(fe.elem_direction, 9), fe.ifc_id)
-    )
-
-    rows = []
-    element_ids = []
-
-    # SE-Zeile
-    rows.append([se.elem_direction or ("o" if _se_is_slab(se) else "n"), "", ""])
-    element_ids.append(se.ifc_id)
-
-    # FE-Zeilen
-    for fe in fes_sorted:
-        czo_se = get_connection_zone(se, fe)   # Kontaktzone auf SE
-        czo_fe = get_connection_zone(fe, se)   # Kontaktzone auf FE
-        rows.append([fe.elem_direction, czo_se, czo_fe])
-        element_ids.append(fe.ifc_id)
-
-    return {
-        "header": ["El.Di.", "CoZo.SE", "CoZo.FE"],
-        "rows": rows,
-        "element_ids": element_ids
-    }
 
 def _se_is_slab(se: BuildingElement) -> bool:
     """True wenn SE eine horizontal liegende Decke/Boden ist (n_vec zeigt stark in Z)."""
@@ -944,7 +839,7 @@ def identify_junction_type(jb: JunctionBox) -> tuple[str, str]:
                 if d == "n":
                     # Parallele Wand → SE setzt sich fort
                     if czs in ("middle", "border"):
-                        return ("Th1-2:4", "Th1-2:4: SE-Ende trifft parallele Wand (Rand/Mitte)")
+                        return ("Th1-2-4", "Th1-2-4: SE-Ende trifft parallele Wand (Rand/Mitte)")
                     return ("Lh1-2",   "L-Stoß horizontal (parallele Wände, Ende)")
 
         # JB4 / JB6: Enden in v-Richtung (Oben/Unten bei Wand; Seiten bei Decke)
@@ -999,7 +894,7 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
     │ Typ               │ n-Seiten        │ v-Seiten     │
     ├───────────────────┼─────────────────┼──────────────┤
     │ Th1-24 / Tv1-24   │ GLEICH          │ beliebig     │
-    │ Th2-1-4 / Tv1-2:4 │ GEGENÜBER       │ VERSCHIEDEN  │
+    │ Th2-1-4 / Tv2-1-4 │ GEGENÜBER       │ VERSCHIEDEN  │
     │ Th1-2:4 / Tv2-1:3 │ GEGENÜBER       │ GLEICH       │
     └───────────────────┴─────────────────┴──────────────┘
     """
@@ -1057,43 +952,48 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
 
         if cz0 == "short" and cz1 == "short":
             if opposite_n_sides():
-                # WICHTIG: Unterscheide n+m+n (Th1-2:4) von n+m+m (Th2-1-4)
                 only_m = (dir_set == {"m"})
-                has_n = ("n" in dir_set)
-                has_m = ("m" in dir_set)
+                only_n = (dir_set == {"n"})
 
                 if only_m:
-                    # Genau dein Fall: SE=n, zwei Querwände m → Th2-1-4 (nicht Th1-2:4)
-                    t = "Tv1-2:4" if slab else "Th2-1-4"
-                    return (t, f"{t}: 2 Querwände(m) gegenüberl. n-Seiten, CoZo short/short")
+                    # 2 Querwände (m) auf gegenüberl. n-Seiten:
+                    # SE=Decke → Tv2-1-4 (Decke zwischen zwei Wänden oben/unten)
+                    # SE=Wand  → Th2-1-4 (Wand trennt zwei Querwände)
+                    t = "Tv2-1-4" if slab else "Th2-1-4"
+                    return (t, f"{t}: 2 m-Elemente auf gegenüberl. n-Seiten")
 
-                # Mischfälle mit mindestens einem 'n' (Fortsetzung/parallel) → Th1-2:4,
-                # wenn sie auf gleicher "Seite" liegen (sonst Th2-1-4)
+                if only_n:
+                    # 2 parallele Wände (n) auf gegenüberl. n-Seiten:
+                    # SE=Decke → Tv1-2:4 (Decke mit parallelen Wänden an Rand)
+                    # SE=Wand  → Th1-2:4
+                    t = "Tv1-2:4" if slab else "Th1-2:4"
+                    return (t, f"{t}: 2 n-Elemente auf gegenüberl. n-Seiten")
+
+                # Mischfall n+m: v-Seite entscheidet
                 if same_v_side():
                     t = "Tv2-1-4" if slab else "Th1-2:4"
-                    return (t, f"{t}: enthält n+..., gleiche v-Seite, gegenüberl. n-Seiten")
+                    return (t, f"{t}: n+m, gleiche v-Seite, gegenüberl. n-Seiten")
                 else:
                     t = "Tv1-2:4" if slab else "Th2-1-4"
-                    return (t, f"{t}: enthält n+..., versch. v-Seiten, gegenüberl. n-Seiten")
+                    return (t, f"{t}: n+m, versch. v-Seiten, gegenüberl. n-Seiten")
 
-            # keine gegenüberliegenden n-Seiten
             t = "Tv1-24" if slab else "Th1-24"
             return (t, f"{t}: beidseitig short, gleiche n-Seite")
 
         if "middle" in (s0, s1):
-            t = "Tv1-2:4" if slab else "Th2-1-4"
+            t = "Tv2-1-4" if slab else "Th2-1-4"
             return (t, f"{t}: SE-Ende trifft FE-Mitte")
 
         if "border" in (s0, s1):
-            # Th1-2:4 / Tv1-2-4: ein n-Element (parallele Wand) + ein m-Element
+            # Th1-2-4 / Tv1-2-4: ein n-Element (parallele Wand) + ein m-Element
             #   → Querwand liegt an der Übergangsstelle zweier fluchtender Wände
-            # Th1-2:4 / Tv2-1-4: nur m-Elemente, SE-Ende liegt im Rand-CZ eines FEs
+            # Th1-2:4 / Tv1-2:4: nur m-Elemente, SE-Ende liegt im Rand-CZ eines FEs
             #   → SE stößt gegen die Fläche einer Querwand, nicht an deren Ende
             if has_n and has_m:
-                t = "Tv1-2-4" if slab else "Th1-2:4"
+                t = "Tv1-2-4" if slab else "Th1-2-4"
                 return (t, f"{t}: paralleles(n) + Querwand(m), CZ=border")
             else:
-                t = "Tv2-1-4" if slab else "Th1-2:4"
+                t = "Tv1-2:4" if slab else "Th1-2:4"
                 return (t, f"{t}: nur Querwände(m), SE-Ende trifft FE-Rand")
 
         t = "Tv1-24" if slab else "Th1-24"
@@ -1109,12 +1009,12 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
                             "Tv2-1:3: 2 Decken gleiche v-Seite, gegenüberl. n-Seiten der Wand")
                 else:
                     # Eine Decke oben, eine unten — Wand trennt sie
-                    return ("Tv1-2:4",
-                            "Tv1-2:4: Wand(SE) trennt 2 Decken oben+unten (versch. v-Seiten)")
+                    return ("Tv2-1-4",
+                            "Tv2-1-4: Wand(SE) trennt 2 Decken oben+unten (versch. v-Seiten)")
             return ("Tv1-24",  "Tv1-24: 2 Decken gleiche n-Seite")
         if "middle" in (s0, s1):
-            return ("Tv1-2:4", "Tv1-2:4: SE-Ende trifft Decken-Mitte")
-        return ("Tv2-1-4",     "Tv2-1-4: Decken mit Randzone")
+            return ("Tv2-1-4", "Tv2-1-4: SE-Ende trifft Decken-Mitte")
+        return ("Tv1-2:4",     "Tv1-2:4: Decken mit Randzone")
 
     # ── Gemischt Wand + Decke ──
     if "o" in dir_set:
@@ -1267,7 +1167,6 @@ def run(ifc_path: str, out_dir: str) -> None:
                 connection_zones   = cz,
                 confidence         = confidence,
                 notes              = notes,
-                type_matrix        = build_type_matrix(jb),
             )
             all_junctions.append(jr)
 
@@ -1283,8 +1182,8 @@ def run(ifc_path: str, out_dir: str) -> None:
     #          (z.B. {55,125} ist Teilmenge von {55,125,149} → verwerfen)
     JUNCTION_PRIO = {
         # T-Stöße und X-Stöße: spezifischste Typen, höchste Priorität
-        "Th1-24": 0, "Th1-2:4": 0, "Th1-2:4": 0, "Th2-1-4": 0,
-        "Tv1-24": 0, "Tv2-1-4": 0, "Tv1-2-4": 0, "Tv1-2:4": 0,
+        "Th1-24": 0, "Th1-2:4": 0, "Th1-2-4": 0, "Th2-1-4": 0,
+        "Tv1-24": 0, "Tv1-2:4": 0, "Tv1-2-4": 0, "Tv2-1-4": 0,
         "Tv2-13": 0, "Tv2-1:3": 0,
         "Xv1-24-3": 0, "Xv2-13-4": 0, "Xh1-24-3": 0,
         "Xh2-1:3-4": 0, "Xv2-1:3-4": 0,
@@ -1295,32 +1194,31 @@ def run(ifc_path: str, out_dir: str) -> None:
     }
     CONF_PRIO = {"ok": 0, "warn": 1, "error": 2}
 
-    # Phase 1: gleiche Element-Mengen → bestes Ergebnis behalten
+    # Phase 1: gleiche Menge → bestes Ergebnis behalten
     seen_keys: dict[frozenset, JunctionResult] = {}
-
-    # Verwende deine existierenden Prioritäten!
-    # (Tv1-24 hat Prio 0, Lv1-2 hat Prio 1 → Tv1-24 gewinnt)
-    def structural_score(r: JunctionResult):
-        conf = CONF_PRIO.get(r.confidence, 9)
-        jprio = JUNCTION_PRIO.get(r.junction_type, 5)
-
-        # Bonus: mehr FEs = informativer (bei dir meist 1, aber schadet nicht)
-        more_fe_better = -len(r.fe_ifc_ids)
-
-        # Bonus: "Mitte-Box" ist oft aussagekräftiger (JB2/5)
-        middle_bonus = 0 if r.jb_id in (2, 5) else 1
-
-        # WICHTIG: KEIN generelles "Slab bevorzugen" mehr,
-        # weil genau das Tv1-24 vs Lv1-2 kaputt macht.
-
-        return (conf, jprio, middle_bonus, more_fe_better)
-
     for jr in all_junctions:
         key = frozenset({jr.se_ifc_id} | set(jr.fe_ifc_ids))
         if key not in seen_keys:
             seen_keys[key] = jr
         else:
-            if structural_score(jr) < structural_score(seen_keys[key]):
+            existing = seen_keys[key]
+            def score(r: JunctionResult):
+                conf        = CONF_PRIO.get(r.confidence, 9)
+                jprio       = JUNCTION_PRIO.get(r.junction_type, 5)
+                middle_bonus = 0 if r.jb_id in (2, 5) else 1
+                n_fe_bonus  = -len(r.fe_ifc_ids)   # mehr FEs = informativer
+                # Für Tv-Junctions: Slab-Perspektive bevorzugen, da der Slab
+                # alle angrenzenden Wände gleichzeitig sieht → korrektere Klassifikation.
+                # Für Th-Junctions: Wand-Perspektive ist meist besser.
+                jt = r.junction_type
+                is_tv = jt.startswith("Tv") or jt.startswith("Xv")
+                slab_is_se = "Slab" in r.se_type or "slab" in r.se_type.lower()
+                if is_tv:
+                    slab_bonus = 0 if slab_is_se else 1
+                else:
+                    slab_bonus = 1 if slab_is_se else 0
+                return (conf, jprio, middle_bonus, slab_bonus, n_fe_bonus)
+            if score(jr) < score(existing):
                 seen_keys[key] = jr
 
     # Phase 2: Teilmengen entfernen
@@ -1387,7 +1285,7 @@ def main():
     # -----------------------------------------------------------------------
     # KONFIGURATION – hier IFC-Pfad und Ausgabeverzeichnis anpassen
     # -----------------------------------------------------------------------
-    IFC_PATH = "./ifc-models/Tv2-1-4.ifc"
+    IFC_PATH = "./ifc-models/Xv1-24-3.ifc"
     OUT_DIR  = "./output"
     # -----------------------------------------------------------------------
 
