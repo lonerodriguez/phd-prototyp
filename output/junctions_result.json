@@ -1,35 +1,38 @@
 {
   "meta": {
-    "ifc_path": "ifc-models\\Xv1-24-3.ifc",
-    "timestamp": "2026-03-04T09:40:51"
+    "ifc_path": "ifc-models\\Xh2-1-3-4.ifc",
+    "timestamp": "2026-03-04T10:02:44"
   },
   "summary": {
     "total_junctions": 1,
-    "separating_elements": 3,
+    "separating_elements": 4,
     "junction_type_counts": {
-      "Xv2-13-4": 1
+      "Xh1-24-3": 1
     }
   },
   "junctions": [
     {
-      "se_ifc_id": 142,
+      "se_ifc_id": 55,
       "se_type": "IfcWallStandardCase",
-      "jb_id": 2,
-      "junction_type": "Xv2-13-4",
+      "jb_id": 1,
+      "junction_type": "Xh1-24-3",
       "fe_ifc_ids": [
-        56,
-        187
+        124,
+        149,
+        173
       ],
       "element_directions": {
-        "56": "o",
-        "187": "o"
+        "124": "n",
+        "149": "m",
+        "173": "m"
       },
       "connection_zones": {
-        "56": "short",
-        "187": "short"
+        "124": "border",
+        "149": "short",
+        "173": "short"
       },
       "confidence": "ok",
-      "notes": "Xv2-13-4: 2 Decken durch Wandmitte (vertikal X)"
+      "notes": "Xh1-24-3: SE-Wand + 3 Querwände (horizontal X)"
     }
   ]
 }
