@@ -1067,9 +1067,13 @@ def _classify_2fe(se, fes, cz_fe, cz_se, dirs, jb_id: int,
 def _classify_3fe(se, fes, cz_fe, cz_se, dirs, slab: bool) -> tuple[str, str]:
     """X-Stoß für 3 FEs.
 
-    Konvention (konsistent mit 2-FE-Logik):
-      h = Kreuzung im Grundriss, alle vertikale Wände  → FEs sind Wände (m/n)
-      v = Kreuzung im Aufriss, Wände treffen Decken    → FEs enthalten Decken (o)
+    Konvention:
+      h = Kreuzung im Grundriss, alle vertikalen Wände  → FEs sind Wände (m/n)
+      v = Kreuzung im Aufriss, Wände treffen Decken     → FEs enthalten Decken (o)
+
+    Xh1-24-3  vs  Xh2-1:3-4  (beide: SE=Wand, o_cnt=0):
+      Xh1-24-3:  m-Wände treffen SE in der MITTE (cz_fe='middle') → SE wird gekreuzt
+      Xh2-1:3-4: m-Wände treffen SE am ENDE      (cz_fe='short')  → SE endet zwischen den Querwänden
     """
     dc    = {d: dirs.count(d) for d in set(dirs)}
     o_cnt = dc.get("o", 0)
@@ -1084,10 +1088,18 @@ def _classify_3fe(se, fes, cz_fe, cz_se, dirs, slab: bool) -> tuple[str, str]:
             return ("Xv2-13-4",  "X-Stoß: Decke(SE) + 3 Wände")
     else:
         # SE = Wand
-        # Alle FEs sind Wände (m/n) → horizontales X im Grundriss
         if o_cnt == 0:
-            return ("Xh1-24-3",  "Xh1-24-3: SE-Wand + 3 Querwände (horizontal X)")
-        # FEs enthalten Decken → vertikales X im Aufriss
+            # Alle FEs sind Wände → horizontales X
+            # Unterscheide Xh1-24-3 vs Xh2-1:3-4 anhand CoZo der m-Wände auf SE
+            m_indices = [i for i, d in enumerate(dirs) if d == "m"]
+            m_cz_on_se = [cz_fe[i] for i in m_indices]   # cz_fe = CoZo auf SE
+            # Xh2-1:3-4: m-Wände enden am Rand/Ende der SE-Wand ('short' oder 'border')
+            # Xh1-24-3:  m-Wände treffen SE in der Mitte
+            if m_indices and all(cz in ("short", "border") for cz in m_cz_on_se):
+                return ("Xh2-1:3-4", "Xh2-1:3-4: SE-Ende, m-Wände enden bei SE (short/border)")
+            return ("Xh1-24-3",  "Xh1-24-3: SE-Wand + 3 Querwände, m-Wände in Mitte")
+
+        # FEs enthalten Decken → vertikales X
         if o_cnt >= 2:
             return ("Xv2-13-4",  "Xv2-13-4: SE-Wand + 2 Decken durch Mitte")
         if m_cnt + n_cnt >= 2 and o_cnt == 1:

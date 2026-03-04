@@ -1,35 +1,32 @@
 {
   "meta": {
-    "ifc_path": "ifc-models\\Tv2-1-3.ifc",
-    "timestamp": "2026-03-04T10:07:05"
+    "ifc_path": "ifc-models\\Lh1-2.ifc",
+    "timestamp": "2026-03-04T10:54:25"
   },
   "summary": {
     "total_junctions": 1,
-    "separating_elements": 3,
+    "separating_elements": 2,
     "junction_type_counts": {
-      "Tv1-24": 1
+      "Lh1-2": 1
     }
   },
   "junctions": [
     {
-      "se_ifc_id": 56,
-      "se_type": "IfcSlab",
-      "jb_id": 6,
-      "junction_type": "Tv1-24",
+      "se_ifc_id": 55,
+      "se_type": "IfcWallStandardCase",
+      "jb_id": 1,
+      "junction_type": "Lh1-2",
       "fe_ifc_ids": [
-        142,
-        187
+        125
       ],
       "element_directions": {
-        "142": "n",
-        "187": "o"
+        "125": "m"
       },
       "connection_zones": {
-        "142": "short",
-        "187": "border"
+        "125": "short"
       },
       "confidence": "ok",
-      "notes": "Tv1-24: gemischt Wand+Decke"
+      "notes": "L-Stoß horizontal (Wand–Wand 90°, Ecke)"
     }
   ]
 }

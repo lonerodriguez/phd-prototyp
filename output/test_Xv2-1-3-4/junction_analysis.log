@@ -1,60 +1,60 @@
-10:42:58  INFO      ============================================================
-10:42:58  INFO      IFC Junction Analysis  –  2026-03-04T10:42:58
-10:42:58  INFO      ============================================================
-10:42:58  INFO      Lade IFC: ifc-models\Xv2-1-3-4.ifc
-10:42:58  INFO      Schema: IFC2X3  |  Elemente: 254 Entitäten
-10:42:58  INFO      Extrahiere Bauteilgeometrie …
-10:42:58  INFO        4 Bauteile geladen, 0 übersprungen.
-10:42:58  INFO      Identifiziere Trennelemente …
-10:42:58  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
-10:42:58  INFO        4 Trennelemente.
-10:42:58  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
-10:42:58  DEBUG       SE #142: 2 flankierende Elemente
-10:42:58  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.634  (raw n=1.000 u=0.000 v=-0.951)
-10:42:58  DEBUG       FE #56 (o) → JB4
-10:42:58  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.634  (raw n=-1.000 u=-0.000 v=-0.951)
-10:42:58  DEBUG       FE #187 (o) → JB4
-10:42:58  DEBUG         identify_junction_type: jb_id=4 n_fe=2 slab=False dirs=['o', 'o'] cz_fe=['short', 'short'] cz_se=['short', 'short']
-10:42:58  INFO        JB4: Tv2-1:3          FEs: [56, 187]  [ok]
-10:42:58  DEBUG              Note: Tv2-1:3: 2 Decken gleiche v-Seite, gegenüberl. n-Seiten der Wand
-10:42:58  INFO      ─── SE #210 (IfcWallStandardCase, WandInstanz) ───
-10:42:58  DEBUG       SE #210: 2 flankierende Elemente
-10:42:58  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.631  (raw n=1.000 u=0.000 v=0.967)
-10:42:58  DEBUG       FE #56 (o) → JB6
-10:42:58  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.631  (raw n=-1.000 u=-0.000 v=0.967)
-10:42:58  DEBUG       FE #187 (o) → JB6
-10:42:58  DEBUG         identify_junction_type: jb_id=6 n_fe=2 slab=False dirs=['o', 'o'] cz_fe=['short', 'short'] cz_se=['short', 'short']
-10:42:58  INFO        JB6: Tv2-1:3          FEs: [56, 187]  [ok]
-10:42:58  DEBUG              Note: Tv2-1:3: 2 Decken gleiche v-Seite, gegenüberl. n-Seiten der Wand
-10:42:58  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
-10:42:58  DEBUG       SE #56: 3 flankierende Elemente
-10:42:58  DEBUG         DD-Normen  n=2.366  u=0.000  v=0.500  (raw n=-0.951 u=0.000 v=1.000)
-10:42:58  DEBUG       FE #142 (n) → JB6
-10:42:58  DEBUG         DD-Normen  n=2.406  u=0.000  v=0.500  (raw n=0.967 u=0.000 v=1.000)
-10:42:58  DEBUG       FE #210 (n) → JB6
-10:42:58  DEBUG         DD-Normen  n=0.000  u=0.000  v=1.000  (raw n=0.000 u=0.000 v=2.000)
-10:42:58  DEBUG       FE #187 (o) → JB6
-10:42:58  DEBUG         identify_junction_type: jb_id=6 n_fe=3 slab=True dirs=['n', 'n', 'o'] cz_fe=['short', 'short', 'border'] cz_se=['short', 'short', 'border']
-10:42:58  INFO        JB6: Xv2-1:3-4        FEs: [142, 210, 187]  [ok]
-10:42:58  DEBUG              Note: X-Stoß: Decke(SE) + 2 Wände + 1 Decke
-10:42:58  INFO      ─── SE #187 (IfcSlab, Floor:DeckenInstanz:317571) ───
-10:42:58  DEBUG       SE #187: 3 flankierende Elemente
-10:42:58  DEBUG         DD-Normen  n=2.366  u=0.000  v=0.500  (raw n=-0.951 u=-0.000 v=-1.000)
-10:42:58  DEBUG       FE #142 (n) → JB4
-10:42:58  DEBUG         DD-Normen  n=2.406  u=0.000  v=0.500  (raw n=0.967 u=-0.000 v=-1.000)
-10:42:58  DEBUG       FE #210 (n) → JB4
-10:42:58  DEBUG         DD-Normen  n=0.000  u=0.000  v=1.000  (raw n=0.000 u=-0.000 v=-2.000)
-10:42:58  DEBUG       FE #56 (o) → JB4
-10:42:58  DEBUG         identify_junction_type: jb_id=4 n_fe=3 slab=True dirs=['n', 'n', 'o'] cz_fe=['short', 'short', 'border'] cz_se=['short', 'short', 'border']
-10:42:58  INFO        JB4: Xv2-1:3-4        FEs: [142, 210, 56]  [ok]
-10:42:58  DEBUG              Note: X-Stoß: Decke(SE) + 2 Wände + 1 Decke
-10:42:58  INFO        Teilmenge entfernt: {56, 187, 142} ⊂ {56, 210, 187, 142}
-10:42:58  INFO        Teilmenge entfernt: {56, 210, 187} ⊂ {56, 210, 187, 142}
-10:42:58  INFO        Deduplizierung: 3 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
-10:42:58  INFO      ============================================================
-10:42:58  INFO      ✓ 1 Stoßstellen gefunden
-10:42:58  INFO      ✓ Typen: {'Xv2-1:3-4': 1}
-10:42:58  INFO      ✓ Debug:    output\test_Xv2-1-3-4\debug_junction_analysis.json
-10:42:58  INFO      ✓ Ergebnis: output\test_Xv2-1-3-4\junctions_result.json
-10:42:58  INFO      ✓ Log:      output\test_Xv2-1-3-4\junction_analysis.log
-10:42:58  INFO      ============================================================
+10:54:41  INFO      ============================================================
+10:54:41  INFO      IFC Junction Analysis  –  2026-03-04T10:54:41
+10:54:41  INFO      ============================================================
+10:54:41  INFO      Lade IFC: ifc-models\Xv2-1-3-4.ifc
+10:54:41  INFO      Schema: IFC2X3  |  Elemente: 254 Entitäten
+10:54:41  INFO      Extrahiere Bauteilgeometrie …
+10:54:41  INFO        4 Bauteile geladen, 0 übersprungen.
+10:54:41  INFO      Identifiziere Trennelemente …
+10:54:41  WARNING     Keine Trennelemente via SpaceBoundary gefunden → Fallback: alle Wände + Decken
+10:54:41  INFO        4 Trennelemente.
+10:54:41  INFO      ─── SE #142 (IfcWallStandardCase, WandInstanz) ───
+10:54:41  DEBUG       SE #142: 2 flankierende Elemente
+10:54:41  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.634  (raw n=1.000 u=0.000 v=-0.951)
+10:54:41  DEBUG       FE #56 (o) → JB4
+10:54:41  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.634  (raw n=-1.000 u=-0.000 v=-0.951)
+10:54:41  DEBUG       FE #187 (o) → JB4
+10:54:41  DEBUG         identify_junction_type: jb_id=4 n_fe=2 slab=False dirs=['o', 'o'] cz_fe=['short', 'short'] cz_se=['short', 'short']
+10:54:41  INFO        JB4: Tv2-1:3          FEs: [56, 187]  [ok]
+10:54:41  DEBUG              Note: Tv2-1:3: 2 Decken gleiche v-Seite, gegenüberl. n-Seiten der Wand
+10:54:41  INFO      ─── SE #210 (IfcWallStandardCase, WandInstanz) ───
+10:54:41  DEBUG       SE #210: 2 flankierende Elemente
+10:54:41  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.631  (raw n=1.000 u=0.000 v=0.967)
+10:54:41  DEBUG       FE #56 (o) → JB6
+10:54:41  DEBUG         DD-Normen  n=1.813  u=0.000  v=0.631  (raw n=-1.000 u=-0.000 v=0.967)
+10:54:41  DEBUG       FE #187 (o) → JB6
+10:54:41  DEBUG         identify_junction_type: jb_id=6 n_fe=2 slab=False dirs=['o', 'o'] cz_fe=['short', 'short'] cz_se=['short', 'short']
+10:54:41  INFO        JB6: Tv2-1:3          FEs: [56, 187]  [ok]
+10:54:41  DEBUG              Note: Tv2-1:3: 2 Decken gleiche v-Seite, gegenüberl. n-Seiten der Wand
+10:54:41  INFO      ─── SE #56 (IfcSlab, Floor:DeckenInstanz:316140) ───
+10:54:41  DEBUG       SE #56: 3 flankierende Elemente
+10:54:41  DEBUG         DD-Normen  n=2.366  u=0.000  v=0.500  (raw n=-0.951 u=0.000 v=1.000)
+10:54:41  DEBUG       FE #142 (n) → JB6
+10:54:41  DEBUG         DD-Normen  n=2.406  u=0.000  v=0.500  (raw n=0.967 u=0.000 v=1.000)
+10:54:41  DEBUG       FE #210 (n) → JB6
+10:54:41  DEBUG         DD-Normen  n=0.000  u=0.000  v=1.000  (raw n=0.000 u=0.000 v=2.000)
+10:54:41  DEBUG       FE #187 (o) → JB6
+10:54:41  DEBUG         identify_junction_type: jb_id=6 n_fe=3 slab=True dirs=['n', 'n', 'o'] cz_fe=['short', 'short', 'border'] cz_se=['short', 'short', 'border']
+10:54:41  INFO        JB6: Xv2-1:3-4        FEs: [142, 210, 187]  [ok]
+10:54:41  DEBUG              Note: X-Stoß: Decke(SE) + 2 Wände + 1 Decke
+10:54:41  INFO      ─── SE #187 (IfcSlab, Floor:DeckenInstanz:317571) ───
+10:54:41  DEBUG       SE #187: 3 flankierende Elemente
+10:54:41  DEBUG         DD-Normen  n=2.366  u=0.000  v=0.500  (raw n=-0.951 u=-0.000 v=-1.000)
+10:54:41  DEBUG       FE #142 (n) → JB4
+10:54:41  DEBUG         DD-Normen  n=2.406  u=0.000  v=0.500  (raw n=0.967 u=-0.000 v=-1.000)
+10:54:41  DEBUG       FE #210 (n) → JB4
+10:54:41  DEBUG         DD-Normen  n=0.000  u=0.000  v=1.000  (raw n=0.000 u=-0.000 v=-2.000)
+10:54:41  DEBUG       FE #56 (o) → JB4
+10:54:41  DEBUG         identify_junction_type: jb_id=4 n_fe=3 slab=True dirs=['n', 'n', 'o'] cz_fe=['short', 'short', 'border'] cz_se=['short', 'short', 'border']
+10:54:41  INFO        JB4: Xv2-1:3-4        FEs: [142, 210, 56]  [ok]
+10:54:41  DEBUG              Note: X-Stoß: Decke(SE) + 2 Wände + 1 Decke
+10:54:41  INFO        Teilmenge entfernt: {56, 187, 142} ⊂ {56, 210, 187, 142}
+10:54:41  INFO        Teilmenge entfernt: {56, 210, 187} ⊂ {56, 210, 187, 142}
+10:54:41  INFO        Deduplizierung: 3 Duplikat(e)/Teilmenge(n) entfernt → 1 eindeutige Stoßstellen
+10:54:41  INFO      ============================================================
+10:54:41  INFO      ✓ 1 Stoßstellen gefunden
+10:54:41  INFO      ✓ Typen: {'Xv2-1:3-4': 1}
+10:54:41  INFO      ✓ Debug:    output\test_Xv2-1-3-4\debug_junction_analysis.json
+10:54:41  INFO      ✓ Ergebnis: output\test_Xv2-1-3-4\junctions_result.json
+10:54:41  INFO      ✓ Log:      output\test_Xv2-1-3-4\junction_analysis.log
+10:54:41  INFO      ============================================================
